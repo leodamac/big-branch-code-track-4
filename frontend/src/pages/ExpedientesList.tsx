@@ -2,134 +2,44 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import type { Expediente, ExpedienteEstado } from '../types';
+import { api } from '../services/api';
 import { 
   FolderOpen, Plus, Search, Filter, ArrowUpRight, 
-  Activity, CheckCircle, Clock, Ban, AlertOctagon, User, DollarSign, Calendar
+  Activity, CheckCircle, Clock, Ban, AlertOctagon, User, DollarSign, Calendar,
+  RefreshCw
 } from 'lucide-react';
 
-const INITIAL_MOCK_EXPEDIENTES: Expediente[] = [
-  {
-    id: "EXP-2026-001",
-    cliente_id: "cli-1",
-    cliente: {
-      id: "cli-1",
-      ruc: "1790012345001",
-      razon_social: "EMPRESA DE PRUEBA S.A.",
-      estado_ruc: "ACTIVO",
-      created_at: "2026-01-01T00:00:00Z"
-    },
-    nota_id: "nota-1",
-    nota: {
-      id: "nota-1",
-      numero_autorizacion: "1234567890123456789012345678901234567",
-      ruc_beneficiario: "1790012345001",
-      valor_nominal: 15000.00,
-      saldo_disponible: 12000.00,
-      tipo: "NCD",
-      created_at: "2026-01-15T00:00:00Z"
-    },
-    estado: "RECIBIDO",
-    monto_a_negociar: 10000.00,
-    responsable: "Alejandro Rivera",
-    created_at: "2026-07-10T09:00:00Z",
-    updated_at: "2026-07-10T09:30:00Z"
-  },
-  {
-    id: "EXP-2026-002",
-    cliente_id: "cli-2",
-    cliente: {
-      id: "cli-2",
-      ruc: "1790056789001",
-      razon_social: "EMPRESA COMPRADORA C.A.",
-      estado_ruc: "ACTIVO",
-      created_at: "2026-02-10T00:00:00Z"
-    },
-    nota_id: "nota-2",
-    nota: {
-      id: "nota-2",
-      numero_autorizacion: "1111111111111111111111111111111111111",
-      ruc_beneficiario: "1790056789001",
-      valor_nominal: 25000.00,
-      saldo_disponible: 25000.00,
-      tipo: "NCD",
-      created_at: "2026-01-15T00:00:00Z"
-    },
-    estado: "EN_VALIDACION",
-    monto_a_negociar: 25000.00,
-    responsable: "Lucia Fernandez",
-    created_at: "2026-07-11T10:15:00Z",
-    updated_at: "2026-07-11T10:45:00Z"
-  },
-  {
-    id: "EXP-2026-003",
-    cliente_id: "cli-3",
-    cliente: {
-      id: "cli-3",
-      ruc: "1712345678001",
-      razon_social: "JUAN PEREZ GOMEZ",
-      estado_ruc: "ACTIVO",
-      created_at: "2026-03-01T00:00:00Z"
-    },
-    nota_id: "nota-3",
-    nota: {
-      id: "nota-3",
-      numero_autorizacion: "2222222222222222222222222222222222222",
-      ruc_beneficiario: "1712345678001",
-      valor_nominal: 5000.00,
-      saldo_disponible: 5000.00,
-      tipo: "NCD",
-      created_at: "2026-01-15T00:00:00Z"
-    },
-    estado: "PENDIENTE_DOCUMENTACION",
-    monto_a_negociar: 5000.00,
-    responsable: "Carlos Ortega",
-    created_at: "2026-07-11T14:20:00Z",
-    updated_at: "2026-07-11T15:00:00Z"
-  },
-  {
-    id: "EXP-2026-004",
-    cliente_id: "cli-4",
-    cliente: {
-      id: "cli-4",
-      ruc: "1790012345001",
-      razon_social: "EMPRESA DE PRUEBA S.A.",
-      estado_ruc: "ACTIVO",
-      created_at: "2026-01-01T00:00:00Z"
-    },
-    nota_id: "nota-4",
-    nota: {
-      id: "nota-4",
-      numero_autorizacion: "3333333333333333333333333333333333333",
-      ruc_beneficiario: "1790012345001",
-      valor_nominal: 10000.00,
-      saldo_disponible: 10000.00,
-      tipo: "NCD",
-      created_at: "2026-01-15T00:00:00Z"
-    },
-    estado: "LISTO_PARA_NEGOCIAR",
-    monto_a_negociar: 8000.00,
-    responsable: "Alejandro Rivera",
-    created_at: "2026-07-11T08:00:00Z",
-    updated_at: "2026-07-11T17:30:00Z"
-  }
-];
+
 
 export const ExpedientesList: React.FC = () => {
   const navigate = useNavigate();
   const { isOperador } = useAuth();
   
-  const [expedientes, setExpedientes] = useState<Expediente[]>(() => {
-    const saved = localStorage.getItem('mock_expedientes');
-    if (saved) return JSON.parse(saved);
-    localStorage.setItem('mock_expedientes', JSON.stringify(INITIAL_MOCK_EXPEDIENTES));
-    return INITIAL_MOCK_EXPEDIENTES;
-  });
+  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
   useEffect(() => {
-    localStorage.setItem('mock_expedientes', JSON.stringify(expedientes));
-  }, [expedientes]);
+    let active = true;
+    setIsLoading(true);
+    setErrorMsg(null);
+    api.getExpedientes()
+      .then((data) => {
+        if (active) {
+          setExpedientes(data);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setErrorMsg(err.message || 'Error al obtener expedientes');
+          setIsLoading(false);
+        }
+      });
+    return () => { active = false; };
+  }, []);
   
   // State for Create Case Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -206,40 +116,26 @@ export const ExpedientesList: React.FC = () => {
       return;
     }
 
-    const newExp: Expediente = {
-      id: `EXP-2026-00${expedientes.length + 1}`,
-      cliente_id: `cli-${Date.now()}`,
-      cliente: {
-        id: `cli-${Date.now()}`,
-        ruc: newRuc,
-        razon_social: newRazonSocial.toUpperCase(),
-        estado_ruc: 'ACTIVO',
-        created_at: new Date().toISOString()
-      },
-      nota_id: `nota-${Date.now()}`,
-      nota: {
-        id: `nota-${Date.now()}`,
-        numero_autorizacion: newAutorizacion,
-        ruc_beneficiario: newRuc,
-        valor_nominal: valNominal,
-        saldo_disponible: valNominal,
-        tipo: 'NCD',
-        created_at: new Date().toISOString()
-      },
-      estado: 'RECIBIDO',
+    api.crearExpediente({
+      cliente_ruc: newRuc,
+      razon_social: newRazonSocial.toUpperCase(),
+      nota_autorizacion: newAutorizacion,
+      valor_nominal: valNominal,
       monto_a_negociar: valMonto,
-      responsable: 'Operador Asistido',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    setExpedientes([newExp, ...expedientes]);
-    setIsModalOpen(false);
-    setNewRuc('');
-    setNewRazonSocial('');
-    setNewAutorizacion('');
-    setNewMonto('');
-    setNewValorNominal('');
+      usuario: 'Operador Asistido'
+    })
+    .then((newExp) => {
+      setExpedientes(prev => [newExp, ...prev]);
+      setIsModalOpen(false);
+      setNewRuc('');
+      setNewRazonSocial('');
+      setNewAutorizacion('');
+      setNewMonto('');
+      setNewValorNominal('');
+    })
+    .catch((err: any) => {
+      alert(`Error al crear expediente: ${err.message || err}`);
+    });
   };
 
   // Filter list
@@ -379,7 +275,22 @@ export const ExpedientesList: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-300 text-sm">
-              {filteredExpedientes.length > 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                    <RefreshCw className="w-8 h-8 text-brand-500 animate-spin mx-auto mb-3" />
+                    <p className="font-medium text-slate-405">Cargando expedientes desde la API...</p>
+                  </td>
+                </tr>
+              ) : errorMsg ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-red-500 bg-red-950/5">
+                    <AlertOctagon className="w-8 h-8 text-red-500 mx-auto mb-3" />
+                    <p className="font-semibold text-red-400">{errorMsg}</p>
+                    <p className="text-xs text-slate-500 mt-1">Por favor verifica que la API esté activa</p>
+                  </td>
+                </tr>
+              ) : filteredExpedientes.length > 0 ? (
                 filteredExpedientes.map((exp) => {
                   const status = statusConfig[exp.estado] || {
                     label: exp.estado,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
 import type { 
   Expediente, ExpedienteEstado, Documento, Riesgo, Endoso, TipoDocumento, RiesgoNivel 
 } from '../types';
@@ -81,7 +82,7 @@ export const ExpedienteWorkspace: React.FC = () => {
   const { role, isOperador, isCumplimiento } = useAuth();
 
   // Load expediente from localStorage
-  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
+
   const [expediente, setExpediente] = useState<Expediente | null>(null);
 
   // Workspace-specific state
@@ -142,31 +143,56 @@ export const ExpedienteWorkspace: React.FC = () => {
 
   // Initial load
   useEffect(() => {
-    const saved = localStorage.getItem('mock_expedientes');
-    if (saved) {
-      const list = JSON.parse(saved) as Expediente[];
-      setExpedientes(list);
-      const found = list.find(e => e.id === id);
-      if (found) {
-        setExpediente(found);
+    let active = true;
+    api.getExpedienteById(id!)
+      .then((data) => {
+        if (!active) return;
+        setExpediente(data);
         setFormData({
-          ruc: found.cliente?.ruc || '',
-          razon_social: found.cliente?.razon_social || '',
-          numero_autorizacion: found.nota?.numero_autorizacion || '',
-          tipo: found.nota?.tipo || 'NCD',
-          valor_nominal: found.nota?.valor_nominal || 0,
-          saldo_disponible: found.nota?.saldo_disponible || 0,
-          monto_a_negociar: found.monto_a_negociar || 0
+          ruc: data.cliente?.ruc || '',
+          razon_social: data.cliente?.razon_social || '',
+          numero_autorizacion: data.nota?.numero_autorizacion || '',
+          tipo: data.nota?.tipo || 'NCD',
+          valor_nominal: data.nota?.valor_nominal || 0,
+          saldo_disponible: data.nota?.saldo_disponible || 0,
+          monto_a_negociar: data.monto_a_negociar || 0
         });
 
         // Initialize documents and endorsements
-        const docs = getInitialDocuments(found.id);
-        const endos = getInitialEndosos(found.id, found.cliente?.ruc || '');
+        const docs = getInitialDocuments(data.id);
+        const endos = getInitialEndosos(data.id, data.cliente?.ruc || '');
         setDocuments(docs);
         setEndosos(endos);
-      }
-    }
+
+        // Fetch risks and suggestions
+        reloadRisksAndSuggestions(data.id);
+      })
+      .catch((err) => {
+        console.error('Error loading expediente:', err);
+      });
+
+
+
+    return () => { active = false; };
   }, [id]);
+
+  const reloadRisksAndSuggestions = (expId: string) => {
+    api.getRiesgos(expId)
+      .then((risksList) => {
+        setRisks(risksList);
+      })
+      .catch(console.error);
+
+    api.getSugerencia(expId)
+      .then((sug) => {
+        setSugerencia({
+          codigo_accion: sug.proxima_accion.codigo_accion as any,
+          descripcion_sugerida: sug.proxima_accion.descripcion_sugerida,
+          rango_descuento_sugerido: sug.sugerencia_tesoreria.rango_descuento_sugerido
+        });
+      })
+      .catch(console.error);
+  };
 
   // Recalculate risks and suggestions dynamically when data or docs change
   useEffect(() => {
@@ -288,69 +314,96 @@ export const ExpedienteWorkspace: React.FC = () => {
     setIsEditing(prev => ({ ...prev, [field]: !prev[field] }));
   };
 
-  // Simulated file uploader with polling
+  // Trigger file selection
   const handleFileUpload = (docType: TipoDocumento) => {
     if (isUploading) return;
-    setIsUploading(true);
     setUploadingDocType(docType);
-    setUploadProgress(10);
-
-    const interval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            // Add document to list
-            const newDoc: Documento = {
-              id: `doc-${expediente.id}-${docType}`,
-              expediente_id: expediente.id,
-              tipo: docType,
-              version: 1,
-              storage_path: `/uploads/upload-${docType.toLowerCase()}.pdf`,
-              hash_sha256: `hash-sha256-${Date.now()}-${docType}`,
-              es_activo: true,
-              created_at: new Date().toISOString()
-            };
-            setDocuments(prevDocs => [...prevDocs, newDoc]);
-            setIsUploading(false);
-            setUploadingDocType(null);
-
-            // Simulation auto-fills or fixes specific checks
-            if (docType === 'NOTA') {
-              // Simulated OCR extraction from uploaded note
-              setFormData(prev => ({
-                ...prev,
-                numero_autorizacion: '1234567890123456789012345678901234567',
-                valor_nominal: 15000.00,
-                saldo_disponible: 12000.00,
-              }));
-              setFieldSources(prev => ({
-                ...prev,
-                numero_autorizacion: 'IA',
-                valor_nominal: 'IA',
-                saldo_disponible: 'IA',
-              }));
-              // Mock endosos extraction
-              setEndosos([
-                {
-                  endosante: "1790012345001",
-                  razonSocialEndosante: "EMPRESA DE PRUEBA S.A.",
-                  endosatario: "1790056789001",
-                  razonSocialEndosatario: "EMPRESA COMPRADORA C.A.",
-                  fecha: "2026-03-10",
-                  valido: true
-                }
-              ]);
-            }
-          }, 300);
-          return 100;
-        }
-        return prev + 30;
-      });
-    }, 600); // simulation totals ~2.5 seconds
+    setTimeout(() => {
+      document.getElementById('file-uploader-input')?.click();
+    }, 100);
   };
 
-  // State transitions mock confirmation
+  // Real uploader with HTTP polling fallback
+  const handleRealFileUpload = (docType: TipoDocumento, file: File) => {
+    setIsUploading(true);
+    setUploadProgress(15);
+
+    api.subirDocumento(expediente!.id, docType, file)
+      .then(() => {
+        setUploadProgress(40);
+        // Start polling extraction status (every 1.5 seconds)
+        const pollInterval = setInterval(() => {
+          api.getDocExtractionStatus(expediente!.id, `doc-${expediente!.id}-${docType}`)
+            .then((statusRes) => {
+              setUploadProgress(statusRes.progress);
+              
+              if (statusRes.status === 'READY') {
+                clearInterval(pollInterval);
+                setIsUploading(false);
+                setUploadingDocType(null);
+                
+                // Add or update documents list
+                if (statusRes.data) {
+                  setDocuments(prev => {
+                    const filtered = prev.filter(d => d.tipo !== docType);
+                    return [...filtered, statusRes.data!];
+                  });
+                }
+                
+                // If it is the NCD note, simulate fields auto-population (OCR)
+                if (docType === 'NOTA') {
+                  setFormData(prev => ({
+                    ...prev,
+                    numero_autorizacion: '1234567890123456789012345678901234567',
+                    valor_nominal: 15000.00,
+                    saldo_disponible: 12000.00,
+                  }));
+                  setFieldSources(prev => ({
+                    ...prev,
+                    numero_autorizacion: 'IA',
+                    valor_nominal: 'IA',
+                    saldo_disponible: 'IA',
+                  }));
+                  setEndosos([
+                    {
+                      endosante: "1790012345001",
+                      razonSocialEndosante: "EMPRESA DE PRUEBA S.A.",
+                      endosatario: "1790056789001",
+                      razonSocialEndosatario: "EMPRESA COMPRADORA C.A.",
+                      fecha: "2026-03-10",
+                      valido: true
+                    }
+                  ]);
+                }
+
+                // Trigger validation on backend
+                api.validarExpediente(expediente!.id)
+                  .then(() => {
+                    reloadRisksAndSuggestions(expediente!.id);
+                  });
+              } else if (statusRes.status === 'FAILED') {
+                clearInterval(pollInterval);
+                setIsUploading(false);
+                setUploadingDocType(null);
+                alert(`[MSG-05] Error al procesar extracción del documento ${docType}.`);
+              }
+            })
+            .catch(() => {
+              // Gracefully handle polling connection failure
+              clearInterval(pollInterval);
+              setIsUploading(false);
+              setUploadingDocType(null);
+            });
+        }, 1500);
+      })
+      .catch((err) => {
+        setIsUploading(false);
+        setUploadingDocType(null);
+        alert(`[MSG-05] Error al cargar archivo: ${err.message || err}`);
+      });
+  };
+
+  // State transitions real integration
   const handleTransitionAction = () => {
     let newStatus: ExpedienteEstado = expediente.estado;
     const action = sugerencia?.codigo_accion;
@@ -373,44 +426,35 @@ export const ExpedienteWorkspace: React.FC = () => {
       }
     }
 
-    const updatedExp: Expediente = {
-      ...expediente,
-      estado: newStatus,
-      monto_a_negociar: formData.monto_a_negociar,
-      cliente: {
-        ...expediente.cliente!,
-        ruc: formData.ruc,
-        razon_social: formData.razon_social
-      },
-      nota: {
-        ...expediente.nota!,
-        numero_autorizacion: formData.numero_autorizacion,
-        valor_nominal: formData.valor_nominal,
-        saldo_disponible: formData.saldo_disponible,
-        tipo: formData.tipo as any
-      },
-      updated_at: new Date().toISOString()
-    };
-
-    const updatedList = expedientes.map(e => e.id === expediente.id ? updatedExp : e);
-    localStorage.setItem('mock_expedientes', JSON.stringify(updatedList));
-    setExpedientes(updatedList);
-    setExpediente(updatedExp);
-    setIsActionModalOpen(false);
-    setModalActionComments('');
+    api.cambiarEstado(expediente.id, {
+      estado_nuevo: newStatus,
+      comentarios: modalActionComments,
+      usuario: role === 'OPERADOR' ? 'Operador de Valores' : 'Oficial de Cumplimiento'
+    })
+    .then((updatedExp) => {
+      setExpediente(updatedExp);
+      setIsActionModalOpen(false);
+      setModalActionComments('');
+      reloadRisksAndSuggestions(updatedExp.id);
+    })
+    .catch((err: any) => {
+      alert(`[MSG-06] Error al transitar estado: ${err.message || err}`);
+    });
   };
 
   const handleCancelCase = () => {
     if (!window.confirm('¿Está seguro de que desea CANCELAR este expediente?')) return;
-    const updatedExp: Expediente = {
-      ...expediente,
-      estado: 'CANCELADO',
-      updated_at: new Date().toISOString()
-    };
-    const updatedList = expedientes.map(e => e.id === expediente.id ? updatedExp : e);
-    localStorage.setItem('mock_expedientes', JSON.stringify(updatedList));
-    setExpedientes(updatedList);
-    setExpediente(updatedExp);
+    api.cambiarEstado(expediente.id, {
+      estado_nuevo: 'CANCELADO',
+      comentarios: 'Cancelado por el operador',
+      usuario: 'Operador de Valores'
+    })
+    .then((updatedExp) => {
+      setExpediente(updatedExp);
+    })
+    .catch((err: any) => {
+      alert(`[MSG-06] Error al cancelar caso: ${err.message || err}`);
+    });
   };
 
   const handleRejectCase = () => {
@@ -420,15 +464,17 @@ export const ExpedienteWorkspace: React.FC = () => {
       alert('Debe ingresar una justificación.');
       return;
     }
-    const updatedExp: Expediente = {
-      ...expediente,
-      estado: 'RECHAZADO',
-      updated_at: new Date().toISOString()
-    };
-    const updatedList = expedientes.map(e => e.id === expediente.id ? updatedExp : e);
-    localStorage.setItem('mock_expedientes', JSON.stringify(updatedList));
-    setExpedientes(updatedList);
-    setExpediente(updatedExp);
+    api.cambiarEstado(expediente.id, {
+      estado_nuevo: 'RECHAZADO',
+      comentarios: comments,
+      usuario: 'Oficial de Cumplimiento'
+    })
+    .then((updatedExp) => {
+      setExpediente(updatedExp);
+    })
+    .catch((err: any) => {
+      alert(`[MSG-06] Error al rechazar caso: ${err.message || err}`);
+    });
   };
 
   // Helper arrays for risks sorting
@@ -456,6 +502,18 @@ export const ExpedienteWorkspace: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 animate-fade-in space-y-8">
+      {/* Hidden file input for real uploads */}
+      <input
+        type="file"
+        id="file-uploader-input"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file && uploadingDocType) {
+            handleRealFileUpload(uploadingDocType, file);
+          }
+        }}
+      />
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
