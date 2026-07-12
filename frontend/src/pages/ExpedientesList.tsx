@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import type { Expediente, ExpedienteEstado } from '../types';
@@ -118,9 +118,18 @@ export const ExpedientesList: React.FC = () => {
   const navigate = useNavigate();
   const { isOperador } = useAuth();
   
-  const [expedientes, setExpedientes] = useState<Expediente[]>(INITIAL_MOCK_EXPEDIENTES);
+  const [expedientes, setExpedientes] = useState<Expediente[]>(() => {
+    const saved = localStorage.getItem('mock_expedientes');
+    if (saved) return JSON.parse(saved);
+    localStorage.setItem('mock_expedientes', JSON.stringify(INITIAL_MOCK_EXPEDIENTES));
+    return INITIAL_MOCK_EXPEDIENTES;
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+
+  useEffect(() => {
+    localStorage.setItem('mock_expedientes', JSON.stringify(expedientes));
+  }, [expedientes]);
   
   // State for Create Case Modal
   const [isModalOpen, setIsModalOpen] = useState(false);

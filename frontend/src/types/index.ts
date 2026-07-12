@@ -74,6 +74,7 @@ export interface Riesgo {
   nivel: RiesgoNivel;
   estado: RiesgoEstado;
   evidencia?: Record<string, any> | string;
+  regla_activadora?: string;
   created_at: string;
 }
 
