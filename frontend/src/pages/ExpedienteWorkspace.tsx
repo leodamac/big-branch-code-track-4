@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
+import { EndosantesTimeline } from '../components/EndosantesTimeline';
 import type { 
   Expediente, ExpedienteEstado, Documento, Riesgo, Endoso, TipoDocumento, RiesgoNivel 
 } from '../types';
@@ -670,103 +671,23 @@ export const ExpedienteWorkspace: React.FC = () => {
             </div>
           </div>
 
-          {/* Endorses Chain timeline (Subtask 13.3 & Path P15) */}
+          {/* Endorses Chain timeline (Path P15) */}
           <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
             <div className="px-6 py-4 bg-slate-900/30 border-b border-slate-800 flex items-center justify-between">
               <h3 className="font-bold text-sm text-slate-200 flex items-center gap-2">
                 <Layers className="w-4.5 h-4.5 text-brand-400" />
                 Cadena de Endosos Registrada en SRI
               </h3>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                endosos.length === 0 
-                  ? 'bg-slate-900 text-slate-550 border border-slate-800' 
-                  : endosos[endosos.length - 1].endosatario === formData.ruc
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                    : 'bg-red-500/10 text-red-400 border border-red-500/20'
-              }`}>
-                {endosos.length === 0 
-                  ? 'Sin endosos (Ordinario)' 
-                  : endosos[endosos.length - 1].endosatario === formData.ruc
-                    ? 'Cadena Válida' 
-                    : 'Cadena Rota'
-                }
-              </span>
             </div>
 
             <div className="p-6">
-              {endosos.length > 0 ? (
-                <div className="relative border-l border-slate-800 ml-3 pl-6 space-y-6 py-1">
-                  {/* Beneficiario Original / Emisión */}
-                  <div className="relative">
-                    <span className="absolute -left-[31px] top-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-brand-500 ring-4 ring-slate-950">
-                      <Check className="w-2.5 h-2.5 text-white" />
-                    </span>
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-brand-400 tracking-wider">Beneficiario Originario</span>
-                      <h4 className="font-semibold text-xs text-slate-200 mt-0.5">EMPRESA DE PRUEBA S.A.</h4>
-                      <p className="text-[10px] text-slate-500 mt-0.5 font-mono">RUC: 1790012345001</p>
-                    </div>
-                  </div>
-
-                  {/* Endosos en la lista */}
-                  {endosos.map((endoso, index) => {
-                    const isLast = index === endosos.length - 1;
-                    const matchesCurrentClient = endoso.endosatario === formData.ruc;
-                    
-                    return (
-                      <div key={index} className="relative">
-                        {/* Connecting Line Circle */}
-                        <span className={`absolute -left-[31px] top-1.5 flex items-center justify-center w-4 h-4 rounded-full ring-4 ring-slate-950 ${
-                          matchesCurrentClient 
-                            ? 'bg-emerald-500' 
-                            : isLast 
-                              ? 'bg-red-500' 
-                              : 'bg-brand-500'
-                        }`}>
-                          <Check className="w-2.5 h-2.5 text-white" />
-                        </span>
-
-                        <div className="p-3 bg-slate-900/30 border border-slate-850 rounded-xl space-y-1.5">
-                          <div className="flex justify-between items-center">
-                            <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider">Endoso #{index + 1}</span>
-                            <span className="text-[9px] font-medium text-slate-400">{endoso.fecha}</span>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                            <div>
-                              <span className="text-[9px] text-slate-500 block uppercase">De (Endosante):</span>
-                              <span className="font-medium text-slate-350">{endoso.razonSocialEndosante || 'Persona Natural'}</span>
-                              <span className="block text-[10px] font-mono text-slate-500 mt-0.5">{endoso.endosante}</span>
-                            </div>
-                            <div>
-                              <span className="text-[9px] text-slate-500 block uppercase">A (Endosatario):</span>
-                              <span className="font-medium text-slate-350">{endoso.razonSocialEndosatario || 'Persona Natural'}</span>
-                              <span className="block text-[10px] font-mono text-slate-500 mt-0.5">{endoso.endosatario}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Visual alert for broken chain */}
-                  {endosos[endosos.length - 1].endosatario !== formData.ruc && (
-                    <div className="p-3 bg-red-950/20 border border-red-500/20 text-red-400 text-xs rounded-xl flex gap-2">
-                      <AlertOctagon className="w-4 h-4 shrink-0 mt-0.5" />
-                      <div>
-                        <strong>Riesgo Crítico:</strong> El cliente actual ({formData.razon_social}) no es el poseedor legal del título. El último beneficiario registrado endosatario es {endosos[endosos.length - 1].razonSocialEndosatario || endosos[endosos.length - 1].endosatario}.
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="p-4 bg-slate-900/10 border border-slate-850/60 rounded-xl text-slate-500 text-center text-xs">
-                  Este es un título ordinario sin cadena de endosos previa registrada.
-                </div>
-              )}
+              <EndosantesTimeline
+                endosos={endosos}
+                clienteRuc={formData.ruc}
+                clienteRazonSocial={formData.razon_social}
+              />
             </div>
           </div>
-
         </div>
 
         {/* Right Column: Validation Form, Risks and Sugerencias (5/12 cols) */}
