@@ -1,12 +1,12 @@
 from uuid import UUID
 
-from sqlmodel import SQLModel
+from sqlmodel import Field, SQLModel
 
 from app.models.enums import EstadoExpediente
 
 
 class ValidarRequest(SQLModel):
-    usuario: str
+    usuario: str = Field(min_length=1, max_length=255)
 
 
 class ResumenRiesgos(SQLModel):

@@ -1,7 +1,7 @@
 from decimal import Decimal
 from uuid import UUID
 
-from sqlmodel import SQLModel
+from sqlmodel import Field, SQLModel
 
 from app.models.enums import EstadoExpediente, EstadoRUC
 from app.schemas.cliente import ClienteRead
@@ -12,12 +12,12 @@ from app.schemas.riesgo import RiesgoRead
 
 
 class ExpedienteCreate(SQLModel):
-    cliente_ruc: str
-    razon_social: str
+    cliente_ruc: str = Field(min_length=1, max_length=13)
+    razon_social: str = Field(min_length=1, max_length=255)
     estado_ruc: EstadoRUC
     nota: NotaCreditoCreate
     monto_a_negociar: Decimal
-    responsable: str
+    responsable: str = Field(min_length=1, max_length=255)
 
 
 class ExpedienteRead(SQLModel):

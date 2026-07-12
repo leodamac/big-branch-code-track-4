@@ -1,7 +1,7 @@
 from typing import Any
 from uuid import UUID
 
-from sqlmodel import SQLModel
+from sqlmodel import Field, SQLModel
 
 from app.models.enums import EstadoRiesgo, NivelRiesgo
 
@@ -20,5 +20,5 @@ class RiesgoList(SQLModel):
 
 
 class RiesgoResolverRequest(SQLModel):
-    usuario: str
-    comentarios: str | None = None
+    usuario: str = Field(min_length=1, max_length=255)
+    comentarios: str | None = Field(default=None, max_length=2000)
