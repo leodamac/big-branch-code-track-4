@@ -23,3 +23,4 @@ class NotaCreditoRead(SQLModel):
     valor_nominal: Decimal
     saldo_disponible: Decimal
     tipo: TipoNotaCredito
+    historial_endosos: list[dict[str, Any]] = []

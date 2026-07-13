@@ -2,15 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { RoleSelector } from './RoleSelector';
 import { Cpu, Wifi, WifiOff } from 'lucide-react';
-import { registerOfflineListener } from '../services/api';
+import { apiClient } from '../services/apiClient';
+
+const PING_INTERVAL_MS = 15000;
 
 export const Navbar: React.FC = () => {
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
-    return registerOfflineListener((offline) => {
-      setIsOffline(offline);
-    });
+    let active = true;
+    const check = () => {
+      apiClient.ping().then((ok) => {
+        if (active) setIsOnline(ok);
+      });
+    };
+    check();
+    const interval = setInterval(check, PING_INTERVAL_MS);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, []);
 
   return (
@@ -31,27 +42,23 @@ export const Navbar: React.FC = () => {
             </div>
           </Link>
 
-          {/* Connection status badge */}
           <div className="hidden sm:block">
-            {isOffline ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-lg shadow-amber-500/5 animate-pulse">
-                <WifiOff className="w-3.5 h-3.5" />
-                <span>Simulador Local (Fallback)</span>
-              </span>
-            ) : (
+            {isOnline ? (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
                 <Wifi className="w-3.5 h-3.5" />
-                <span>API Online (FastAPI)</span>
+                <span>API Online</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/10 text-red-400 border border-red-500/20 shadow-lg shadow-red-500/5 animate-pulse">
+                <WifiOff className="w-3.5 h-3.5" />
+                <span>API No Disponible</span>
               </span>
             )}
           </div>
         </div>
 
         <div className="flex items-center gap-6">
-          <Link
-            to="/"
-            className="text-sm font-medium text-slate-400 hover:text-slate-200 transition-colors duration-150"
-          >
+          <Link to="/" className="text-sm font-medium text-slate-400 hover:text-slate-200 transition-colors duration-150">
             Expedientes
           </Link>
           <div className="h-4 w-px bg-slate-800" />

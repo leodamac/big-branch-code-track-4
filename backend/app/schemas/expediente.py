@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -33,6 +34,8 @@ class ExpedienteListItem(SQLModel):
     id: UUID
     estado: EstadoExpediente
     monto_a_negociar: Decimal
+    responsable: str
+    created_at: datetime
     cliente: ClienteRead
     nota_credito: NotaCreditoRead
 

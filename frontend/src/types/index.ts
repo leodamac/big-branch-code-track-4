@@ -27,13 +27,15 @@ export type RiesgoNivel = 'CRITICO' | 'ALTO' | 'MEDIO' | 'BAJO';
 
 export type RiesgoEstado = 'ABIERTO' | 'RESUELTO';
 
+// Nota: los campos Decimal del backend (FastAPI/Pydantic) serializan como
+// STRING en el JSON (ej. "5000.00"), no como number. Se tipan como string
+// aquí a propósito; usa parseMonto() de apiClient.ts para convertirlos.
+
 export interface Cliente {
   id: string;
   ruc: string;
   razon_social: string;
   estado_ruc: EstadoRuc;
-  datos_kyc?: Record<string, any>;
-  created_at: string;
 }
 
 export interface Endoso {
@@ -42,18 +44,15 @@ export interface Endoso {
   endosatario: string;
   razonSocialEndosatario?: string;
   fecha: string;
-  valido?: boolean;
 }
 
 export interface NotaCredito {
   id: string;
   numero_autorizacion: string;
   ruc_beneficiario: string;
-  valor_nominal: number;
-  saldo_disponible: number;
+  valor_nominal: string;
+  saldo_disponible: string;
   tipo: TipoNotaCredito;
-  historial_endosos?: Endoso[];
-  created_at: string;
 }
 
 export interface Documento {
@@ -64,7 +63,6 @@ export interface Documento {
   storage_path: string;
   hash_sha256: string;
   es_activo: boolean;
-  created_at: string;
 }
 
 export interface Riesgo {
@@ -73,42 +71,129 @@ export interface Riesgo {
   descripcion: string;
   nivel: RiesgoNivel;
   estado: RiesgoEstado;
-  evidencia?: Record<string, any> | string;
-  regla_activadora?: string;
-  created_at: string;
+  evidencia: {
+    regla_activadora?: string;
+    detalle?: string;
+    [key: string]: unknown;
+  };
 }
 
-export interface HistorialEstados {
-  id: string;
-  expediente_id: string;
+export interface HistorialEstado {
   estado_anterior: ExpedienteEstado | null;
   estado_nuevo: ExpedienteEstado;
   usuario: string;
-  comentarios: string;
+  comentarios: string | null;
   created_at: string;
 }
 
-export interface Expediente {
+// GET /expedientes (cada item de la lista)
+export interface ExpedienteListItem {
   id: string;
-  cliente_id: string;
-  cliente?: Cliente;
-  nota_id: string;
-  nota?: NotaCredito;
   estado: ExpedienteEstado;
-  monto_a_negociar: number;
+  monto_a_negociar: string;
   responsable: string;
   created_at: string;
-  updated_at: string;
+  cliente: Cliente;
+  nota_credito: NotaCredito;
 }
 
-export interface DashboardInfo {
-  expediente_id: string;
-  estado_actual: ExpedienteEstado;
+// POST /expedientes (respuesta)
+export interface ExpedienteRead {
+  id: string;
+  estado: ExpedienteEstado;
+  cliente_id: string;
+  nota_id: string;
+  monto_a_negociar: string;
+  responsable: string;
+}
+
+// GET /expedientes/{id}
+export interface ExpedienteDetail {
+  id: string;
+  estado: ExpedienteEstado;
+  monto_a_negociar: string;
+  responsable: string;
+  cliente: Cliente;
+  nota_credito: NotaCredito & { historial_endosos?: Endoso[] };
+  documentos: Documento[];
   riesgos: Riesgo[];
-  sugerencia?: {
-    codigo_accion: string;
+  historial_estados: HistorialEstado[];
+}
+
+// GET /expedientes/antecedentes?ruc=...
+export interface ExpedienteAntecedente {
+  id: string;
+  estado: ExpedienteEstado;
+  numero_autorizacion: string;
+}
+
+export interface AntecedentesResponse {
+  cliente: Cliente;
+  expedientes_anteriores: ExpedienteAntecedente[];
+}
+
+// POST /expedientes/{id}/validar
+export interface ResumenRiesgos {
+  criticos: number;
+  altos: number;
+  medios: number;
+  bajos: number;
+}
+
+export interface ValidacionResponse {
+  expediente_id: string;
+  resultado: string;
+  estado: ExpedienteEstado;
+  resumen_riesgos: ResumenRiesgos;
+  puede_avanzar: boolean;
+}
+
+// POST /expedientes/{id}/estado
+export interface CambiarEstadoResponse {
+  expediente_id: string;
+  estado_anterior: ExpedienteEstado;
+  estado_nuevo: ExpedienteEstado;
+}
+
+// GET /expedientes/{id}/siguiente-accion
+export type CodigoAccion = 'PREPARAR_ORDEN' | 'SOLICITAR_CORRECCION_MONTO' | 'ENVIAR_CUMPLIMIENTO';
+
+export interface SiguienteAccionResponse {
+  viabilidad_financiera: {
+    aprobado: boolean | null;
+    motivo_rechazo: string | null;
+  };
+  sugerencia_tesoreria: {
+    rango_descuento_sugerido: string | null;
+    monto_nominal_negociable: number;
+    observaciones_liquidez: string | null;
+  };
+  proxima_accion: {
+    codigo_accion: CodigoAccion;
     descripcion_sugerida: string;
-    rango_descuento_sugerido?: string;
+  };
+  _error?: string;
+}
+
+// POST /expedientes/{id}/siguiente-accion/aceptar
+export interface AceptarAccionResponse {
+  expediente_id: string;
+  accion_aceptada: string;
+  estado: ExpedienteEstado;
+}
+
+// Payload para POST /expedientes (creación manual)
+export interface CrearExpedientePayload {
+  cliente_ruc: string;
+  razon_social: string;
+  estado_ruc: EstadoRuc;
+  nota: {
+    numero_autorizacion: string;
+    ruc_beneficiario: string;
+    valor_nominal: number;
+    saldo_disponible: number;
+    tipo: TipoNotaCredito;
+    historial_endosos: Endoso[];
   };
   monto_a_negociar: number;
   responsable: string;
