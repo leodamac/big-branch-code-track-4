@@ -33,8 +33,10 @@ REGLAS DE NEGOCIO A EVALUAR:
   ningún riesgo por este concepto), y usa siempre "regla_activadora": "R11" para estos riesgos —
   nunca uses R9 ni R12 para esto, esos IDs son para otras reglas. La "descripcion" debe explicar
   explícitamente (a) por qué ese documento es obligatorio y (b) qué acción debe tomar el operador,
-  usando el formato "Falta <DOCUMENTO>: <razón por la que es obligatorio> — <qué hacer>". Usa estas
-  razones según el documento:
+  usando el formato "Falta <DOCUMENTO>: <explicación> — <qué hacer>". Redacta la explicación con tus
+  propias palabras cada vez que generes este riesgo — varía la redacción entre una corrida y otra
+  (sinónimos, orden de las ideas, tono), NO repitas literalmente el mismo texto en corridas distintas,
+  pero mantén siempre el motivo real de fondo según el documento:
   - CEDULA: identifica al beneficiario y es indispensable para verificar su identidad antes de negociar.
   - PAPELETA: certifica la situación electoral vigente del beneficiario, requerida para confirmar su
     situación legal antes de negociar.
@@ -43,8 +45,8 @@ REGLAS DE NEGOCIO A EVALUAR:
   - KYC: sustenta la debida diligencia del cliente ("conozca a su cliente") exigida por normativa antilavado.
   - CESION: formaliza legalmente la cesión de derechos sobre la nota de crédito, indispensable para
     respaldar la transferencia de titularidad.
-  En todos los casos indica que se debe solicitar el documento al cliente/responsable antes de continuar
-  con la negociación.
+  En todos los casos indica (con tus propias palabras) que se debe solicitar el documento al
+  cliente/responsable antes de continuar con la negociación.
 - Estado del RUC: si estado_ruc no es "ACTIVO", levanta riesgo CRÍTICO.
 
 FUERA DE TU ALCANCE: no evalúes ni menciones montos, saldos disponibles ni
@@ -120,7 +122,11 @@ class ComplianceAgent:
                 contents=mensaje,
                 config=types.GenerateContentConfig(
                     system_instruction=_SYSTEM_PROMPT,
-                    temperature=0.0,
+                    # Antes en 0.0 (determinístico): la redacción de cada riesgo salía
+                    # idéntica en cada corrida. Se sube para variar el texto entre
+                    # corridas; qué documentos están CRÍTICOS sigue siendo 100%
+                    # determinístico porque viene calculado en Python (documentos_faltantes).
+                    temperature=0.8,
                     response_mime_type="application/json",
                 ),
             )
