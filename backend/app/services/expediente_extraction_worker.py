@@ -59,7 +59,7 @@ async def _extraer_una_nota(cliente_sri: SriApiClient) -> None:
             historial_endosos=nota_sri["historialEndosos"],
         ),
         monto_a_negociar=monto_a_negociar,
-        responsable="pipeline-extraccion",
+        responsable="Fernando Zavala",
     )
 
     async with Database.SessionLocal() as session:
