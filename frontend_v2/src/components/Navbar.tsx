@@ -30,21 +30,6 @@ export const Navbar: React.FC = () => {
               </span>
             </div>
           </Link>
-
-          {/* Connection status badge */}
-          <div className="hidden sm:block">
-            {isOffline ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/10 text-red-400 border border-red-500/20 shadow-lg shadow-red-500/5 animate-pulse">
-                <WifiOff className="w-3.5 h-3.5" />
-                <span>API Offline (Desconectado)</span>
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
-                <Wifi className="w-3.5 h-3.5" />
-                <span>API Online (FastAPI)</span>
-              </span>
-            )}
-          </div>
         </div>
 
         <div className="flex items-center gap-6">
