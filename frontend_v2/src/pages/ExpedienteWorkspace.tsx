@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { EndosantesTimeline } from '../components/EndosantesTimeline';
@@ -79,12 +79,15 @@ const getInitialEndosos = (expId: string, clientRuc: string): Endoso[] => {
 
 export const ExpedienteWorkspace: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const isNewCase = id === 'nuevo';
 
   const { role, isOperador, isCumplimiento } = useAuth();
 
   // Load expediente from localStorage
 
   const [expediente, setExpediente] = useState<Expediente | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Workspace-specific state
   const [documents, setDocuments] = useState<Documento[]>([]);
@@ -144,7 +147,54 @@ export const ExpedienteWorkspace: React.FC = () => {
 
   // Initial load
   useEffect(() => {
+    if (isNewCase) {
+      setExpediente({
+        id: 'nuevo',
+        cliente_id: '',
+        cliente: { id: '', ruc: '', razon_social: '', estado_ruc: 'ACTIVO', created_at: '' },
+        nota_id: '',
+        nota: { id: '', numero_autorizacion: '', ruc_beneficiario: '', valor_nominal: 0, saldo_disponible: 0, tipo: 'NCD', created_at: '' },
+        estado: 'RECIBIDO',
+        monto_a_negociar: 0,
+        responsable: 'Operador Asistido',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+      setFormData({
+        ruc: '',
+        razon_social: '',
+        numero_autorizacion: '',
+        tipo: 'NCD',
+        valor_nominal: 0,
+        saldo_disponible: 0,
+        monto_a_negociar: 0
+      });
+      setConfirmedFields({
+        ruc: false,
+        razon_social: false,
+        numero_autorizacion: false,
+        tipo: false,
+        valor_nominal: false,
+        saldo_disponible: false,
+        monto_a_negociar: false
+      });
+      setFieldSources({
+        ruc: 'MANUAL',
+        razon_social: 'MANUAL',
+        numero_autorizacion: 'MANUAL',
+        tipo: 'MANUAL',
+        valor_nominal: 'MANUAL',
+        saldo_disponible: 'MANUAL',
+        monto_a_negociar: 'MANUAL'
+      });
+      setDocuments([]);
+      setEndosos([]);
+      setIsLoading(false);
+      return;
+    }
+
     let active = true;
+    setIsLoading(true);
     api.getExpedienteById(id!)
       .then((data) => {
         if (!active) return;
@@ -154,9 +204,9 @@ export const ExpedienteWorkspace: React.FC = () => {
           razon_social: data.cliente?.razon_social || '',
           numero_autorizacion: data.nota?.numero_autorizacion || '',
           tipo: data.nota?.tipo || 'NCD',
-          valor_nominal: data.nota?.valor_nominal || 0,
-          saldo_disponible: data.nota?.saldo_disponible || 0,
-          monto_a_negociar: data.monto_a_negociar || 0
+          valor_nominal: Number(data.nota?.valor_nominal) || 0,
+          saldo_disponible: Number(data.nota?.saldo_disponible) || 0,
+          monto_a_negociar: Number(data.monto_a_negociar) || 0
         });
 
         // Initialize documents and endorsements
@@ -167,12 +217,12 @@ export const ExpedienteWorkspace: React.FC = () => {
 
         // Fetch risks and suggestions
         reloadRisksAndSuggestions(data.id);
+        setIsLoading(false);
       })
       .catch((err) => {
         console.error('Error loading expediente:', err);
+        setIsLoading(false);
       });
-
-
 
     return () => { active = false; };
   }, [id]);
@@ -289,6 +339,15 @@ export const ExpedienteWorkspace: React.FC = () => {
     }
   }, [formData, documents, endosos, expediente]);
 
+  if (isLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-6 py-24 text-center space-y-4">
+        <RefreshCw className="w-10 h-10 text-brand-500 animate-spin mx-auto" />
+        <p className="text-slate-400 font-medium text-sm">Cargando Workspace del Expediente...</p>
+      </div>
+    );
+  }
+
   if (!expediente) {
     return (
       <div className="max-w-7xl mx-auto px-6 py-12 text-center">
@@ -324,10 +383,109 @@ export const ExpedienteWorkspace: React.FC = () => {
     }, 100);
   };
 
+  const handleSaveNewCase = () => {
+    if (!formData.ruc || !formData.razon_social || !formData.numero_autorizacion || !formData.valor_nominal || !formData.monto_a_negociar) {
+      alert('Por favor complete y confirme todos los campos.');
+      return;
+    }
+
+    if (formData.monto_a_negociar > formData.valor_nominal) {
+      alert('El monto a negociar no puede exceder el valor nominal.');
+      return;
+    }
+
+    api.crearExpediente({
+      cliente_ruc: formData.ruc,
+      razon_social: formData.razon_social,
+      nota_autorizacion: formData.numero_autorizacion,
+      valor_nominal: formData.valor_nominal,
+      monto_a_negociar: formData.monto_a_negociar,
+      usuario: 'Operador Asistido'
+    })
+    .then((newExp) => {
+      navigate(`/expedientes/${newExp.id}`);
+    })
+    .catch((err) => {
+      alert(`Error al crear el expediente: ${err.message || err}`);
+    });
+  };
+
   // Real uploader with HTTP polling fallback
   const handleRealFileUpload = (docType: TipoDocumento, file: File) => {
     setIsUploading(true);
     setUploadProgress(15);
+    setUploadingDocType(docType);
+
+    if (isNewCase) {
+      const interval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            setIsUploading(false);
+            setUploadingDocType(null);
+
+            setFormData({
+              ruc: '1790012345001',
+              razon_social: 'EMPRESA DE PRUEBA S.A.',
+              numero_autorizacion: '1234567890123456789012345678901234567',
+              tipo: 'NCD',
+              valor_nominal: 15000.00,
+              saldo_disponible: 15000.00,
+              monto_a_negociar: 12000.00
+            });
+
+            setFieldSources({
+              ruc: 'IA',
+              razon_social: 'REUTILIZADO',
+              numero_autorizacion: 'IA',
+              tipo: 'IA',
+              valor_nominal: 'IA',
+              saldo_disponible: 'IA',
+              monto_a_negociar: 'MANUAL'
+            });
+
+            setConfirmedFields({
+              ruc: true,
+              razon_social: true,
+              numero_autorizacion: true,
+              tipo: true,
+              valor_nominal: true,
+              saldo_disponible: true,
+              monto_a_negociar: false
+            });
+
+            setDocuments([
+              {
+                id: 'doc-temp-nota',
+                expediente_id: 'nuevo',
+                tipo: 'NOTA',
+                version: 1,
+                storage_path: '/uploads/extracted-nota.pdf',
+                hash_sha256: 'sha256-ocr-extracted-nota-12345',
+                es_activo: true,
+                created_at: new Date().toISOString()
+              }
+            ]);
+
+            setEndosos([
+              {
+                endosante: "1790012345001",
+                razonSocialEndosante: "EMPRESA DE PRUEBA S.A.",
+                endosatario: "1790056789001",
+                razonSocialEndosatario: "EMPRESA COMPRADORA C.A.",
+                fecha: "2026-03-10",
+                valido: true
+              }
+            ]);
+
+            return 100;
+          }
+          return prev + 30;
+        });
+      }, 500);
+
+      return;
+    }
 
     api.subirDocumento(expediente!.id, docType, file)
       .then(() => {
@@ -527,14 +685,17 @@ export const ExpedienteWorkspace: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold tracking-tight text-white">
-                Workspace: {expediente.id}
+                {isNewCase ? 'Crear Nuevo Expediente' : `Workspace: ${expediente.id}`}
               </h1>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border font-mono ${statusColors[expediente.estado]}`}>
-                {expediente.estado}
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border font-mono ${isNewCase ? 'bg-slate-800 text-slate-400 border-slate-700' : statusColors[expediente.estado]}`}>
+                {isNewCase ? 'NUEVO' : expediente.estado}
               </span>
             </div>
             <p className="text-slate-400 text-sm mt-0.5">
-              Cliente: <span className="text-slate-200 font-semibold">{formData.razon_social || expediente.cliente?.razon_social}</span>
+              {isNewCase 
+                ? 'Cargue la Nota de Crédito en formato PDF para iniciar la extracción inteligente de datos.'
+                : `Cliente: ${formData.razon_social || expediente.cliente?.razon_social}`
+              }
             </p>
           </div>
         </div>
@@ -545,7 +706,7 @@ export const ExpedienteWorkspace: React.FC = () => {
             <span>Rol: <strong className="text-slate-200">{role === 'OPERADOR' ? 'Operador de Valores' : 'Oficial de Cumplimiento'}</strong></span>
           </div>
 
-          {isOperador && expediente.estado !== 'CERRADO' && expediente.estado !== 'CANCELADO' && expediente.estado !== 'RECHAZADO' && (
+          {!isNewCase && isOperador && expediente.estado !== 'CERRADO' && expediente.estado !== 'CANCELADO' && expediente.estado !== 'RECHAZADO' && (
             <button
               onClick={handleCancelCase}
               className="px-3.5 py-2 bg-slate-950 hover:bg-red-950/20 border border-slate-850 hover:border-red-500/40 text-slate-450 hover:text-red-400 rounded-xl text-xs font-semibold transition-all"
@@ -554,7 +715,7 @@ export const ExpedienteWorkspace: React.FC = () => {
             </button>
           )}
 
-          {isCumplimiento && expediente.estado === 'EN_VALIDACION' && (
+          {!isNewCase && isCumplimiento && expediente.estado === 'EN_VALIDACION' && (
             <div className="flex gap-2">
               <button
                 onClick={handleRejectCase}
@@ -593,12 +754,17 @@ export const ExpedienteWorkspace: React.FC = () => {
 
             <div className="p-6 space-y-4">
               {/* Drag-and-drop placeholder zone */}
-              <div className="p-6 border-2 border-dashed border-slate-800/80 hover:border-brand-500/40 rounded-xl bg-slate-950/20 text-center transition-all group relative overflow-hidden">
+              <div 
+                onClick={() => isNewCase && handleFileUpload('NOTA')}
+                className={`p-6 border-2 border-dashed rounded-xl bg-slate-950/20 text-center transition-all group relative overflow-hidden ${
+                  isNewCase ? 'cursor-pointer border-brand-500/40 hover:border-brand-500/80 hover:bg-brand-500/5' : 'border-slate-800/80 hover:border-brand-500/40'
+                }`}
+              >
                 {isUploading ? (
                   <div className="py-4 space-y-3">
                     <RefreshCw className="w-8 h-8 text-brand-500 animate-spin mx-auto" />
                     <p className="text-sm font-semibold text-slate-200">
-                      Simulando Polling e Extracción por IA ({uploadingDocType})...
+                      Extrayendo información con IA... ({uploadingDocType})
                     </p>
                     <div className="w-48 bg-slate-900 h-1.5 rounded-full mx-auto overflow-hidden">
                       <div 
@@ -606,6 +772,16 @@ export const ExpedienteWorkspace: React.FC = () => {
                         style={{ width: `${uploadProgress}%` }}
                       />
                     </div>
+                  </div>
+                ) : isNewCase ? (
+                  <div>
+                    <Upload className="w-8 h-8 text-brand-400 group-hover:scale-105 mx-auto mb-2 transition-transform" />
+                    <p className="text-sm text-slate-200 font-semibold">
+                      Haga clic aquí para subir la Nota de Crédito (PDF)
+                    </p>
+                    <p className="text-xs text-brand-400/80 mt-1">
+                      El sistema extraerá automáticamente el RUC, Autorización y Valores nominales
+                    </p>
                   </div>
                 ) : (
                   <div>
@@ -651,7 +827,7 @@ export const ExpedienteWorkspace: React.FC = () => {
                         </div>
                       </div>
                       
-                      {isOperador && (
+                      {isOperador && (!isNewCase || type === 'NOTA') && (
                         <button
                           onClick={() => handleFileUpload(type)}
                           disabled={isUploading}
@@ -807,13 +983,23 @@ export const ExpedienteWorkspace: React.FC = () => {
                 Matriz de Riesgos
               </h3>
               
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-900 border border-slate-800 text-slate-400">
-                {risks.length} Detectados
-              </span>
+              {!isNewCase && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-900 border border-slate-800 text-slate-400">
+                  {risks.length} Detectados
+                </span>
+              )}
             </div>
 
             <div className="p-6 space-y-4">
-              {visibleRisks.length > 0 ? (
+              {isNewCase ? (
+                <div className="py-6 text-center text-slate-500 text-xs flex flex-col items-center justify-center space-y-2">
+                  <Shield className="w-10 h-10 text-brand-500/20" />
+                  <p className="font-semibold text-slate-350">Evaluación de Riesgos Pendiente</p>
+                  <p className="max-w-[280px] leading-relaxed mx-auto">
+                    Los controles normativos de negocio y de cadena de endosos se evaluarán una vez guardado el expediente.
+                  </p>
+                </div>
+              ) : visibleRisks.length > 0 ? (
                 <div className="space-y-3">
                   {visibleRisks.map((risk) => {
                     const colors: Record<RiesgoNivel, { bg: string; border: string; text: string; icon: React.ReactNode }> = {
@@ -884,7 +1070,33 @@ export const ExpedienteWorkspace: React.FC = () => {
           </div>
 
           {/* Next Action suggest panel (Subtask 13.5) */}
-          {sugerencia && (
+          {isNewCase ? (
+            <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden glow-brand">
+              <div className="px-6 py-4 bg-slate-900/30 border-b border-slate-800 flex items-center justify-between">
+                <h3 className="font-bold text-sm text-slate-200 flex items-center gap-2">
+                  <CheckSquare className="w-4.5 h-4.5 text-brand-400" />
+                  Confirmación de Expediente
+                </h3>
+              </div>
+
+              <div className="p-6 space-y-4 text-xs">
+                <div className="p-4 bg-slate-900/50 border border-slate-850 rounded-xl space-y-2">
+                  <span className="text-[9px] uppercase font-bold text-slate-500">Nota a Generar:</span>
+                  <p className="text-slate-350 leading-relaxed">
+                    Verifique que los campos extraídos por IA y/o completados manualmente coincidan con la Nota de Crédito física antes de proceder a la creación formal del expediente.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleSaveNewCase}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/10 transition-all duration-150 font-bold"
+                >
+                  <CheckCircle className="w-4.5 h-4.5" />
+                  <span>Guardar y Crear Expediente</span>
+                </button>
+              </div>
+            </div>
+          ) : sugerencia && (
             <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden glow-brand">
               <div className="px-6 py-4 bg-slate-900/30 border-b border-slate-800 flex items-center justify-between">
                 <h3 className="font-bold text-sm text-slate-200 flex items-center gap-2">

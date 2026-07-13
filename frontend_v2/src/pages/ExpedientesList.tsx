@@ -155,7 +155,9 @@ export const ExpedientesList: React.FC = () => {
   const totalCases = expedientes.length;
   const inValidationCount = expedientes.filter(e => e.estado === 'EN_VALIDACION').length;
   const readyCount = expedientes.filter(e => e.estado === 'LISTO_PARA_NEGOCIAR').length;
-  const totalMontoNegociable = expedientes.reduce((sum, e) => sum + e.monto_a_negociar, 0);
+  const totalMontoNegociable = expedientes
+    .filter(e => e.estado === 'LISTO_PARA_NEGOCIAR')
+    .reduce((sum, e) => sum + (Number(e.nota?.valor_nominal) || 0), 0);
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 animate-fade-in space-y-8">
@@ -172,7 +174,7 @@ export const ExpedientesList: React.FC = () => {
 
         {isOperador && (
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => navigate('/expedientes/nuevo')}
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white rounded-xl text-sm font-semibold shadow-lg hover:shadow-brand-500/20 transition-all duration-200"
           >
             <Plus className="w-4 h-4" />
