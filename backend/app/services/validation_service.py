@@ -8,6 +8,11 @@ from app.repositories.expediente_repository import ExpedienteRepository
 from app.repositories.riesgo_repository import RiesgoRepository
 from app.services.state_service import StateService
 
+# Documentos que el ComplianceAgent debe exigir como obligatorios. NOTA queda
+# fuera a propósito: sus datos ya llegan estructurados desde el SRI junto con
+# la nota de crédito y nunca se sube como archivo.
+DOCUMENTOS_OBLIGATORIOS = ["CEDULA", "PAPELETA", "CERTIFICADO", "PLANILLA", "KYC", "CESION"]
+
 
 class ValidationService:
     """Servicio de reglas de negocio: genera riesgos (vía ComplianceAgent) y
@@ -56,10 +61,21 @@ class ValidationService:
             }
             for doc in expediente.documentos
         ]
+        tipos_activos_presentes = {
+            doc.tipo.value for doc in expediente.documentos if doc.es_activo
+        }
+        documentos_faltantes = [
+            tipo for tipo in DOCUMENTOS_OBLIGATORIOS if tipo not in tipos_activos_presentes
+        ]
 
         riesgos_detectados = await self.compliance_agent.analizar_riesgos(
-            datos_cliente, datos_nota, documentos_presentes
+            datos_cliente, datos_nota, documentos_presentes, documentos_faltantes
         )
+
+        # Cada corrida de validación reemplaza los riesgos anteriores: evita que
+        # se acumulen duplicados/obsoletos (ej. de intentos fallidos previos)
+        # cada vez que el operador vuelve a presionar "Validar".
+        await self.riesgo_repo.delete_by_expediente(expediente.id)
 
         for riesgo_dict in riesgos_detectados:
             try:

@@ -26,4 +26,3 @@ class NotaCreditoRead(SQLModel):
     tipo: TipoNotaCredito
     created_at: datetime
     historial_endosos: list[dict[str, Any]] = []
-

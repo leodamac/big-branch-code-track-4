@@ -2,7 +2,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from sqlmodel import select
-from sqlalchemy import case
+from sqlalchemy import case, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.base import BaseRepository
@@ -42,3 +42,9 @@ class RiesgoRepository(BaseRepository[Riesgo]):
         riesgo.estado = EstadoRiesgo.RESUELTO
         await self.session.flush()
         return riesgo
+
+    async def delete_by_expediente(self, expediente_id: UUID) -> None:
+        await self.session.execute(
+            delete(self.model).where(self.model.expediente_id == expediente_id)
+        )
+        await self.session.flush()

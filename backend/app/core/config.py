@@ -43,5 +43,13 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-flash-latest"
 
+    # Orígenes permitidos para CORS (el frontend Vite corre en otro puerto).
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    @computed_field
+    @property
+    def CORS_ORIGINS_LIST(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
 
 settings = Settings()

@@ -29,6 +29,13 @@ REGLAS DE NEGOCIO A EVALUAR:
 
 Debes sugerir la "Próxima Acción" recomendada para el operador.
 
+Los valores de "aprobado", "monto_nominal_negociable" y "codigo_accion" deben salir siempre de aplicar
+R1/R2 a los datos recibidos (deben ser consistentes entre corridas con la misma entrada). En cambio, el
+texto en lenguaje natural ("motivo_rechazo", "rango_descuento_sugerido", "observaciones_liquidez",
+"descripcion_sugerida") redáctalo con tus propias palabras cada vez — varía la redacción entre una
+corrida y otra (sinónimos, orden de las ideas), no repitas literalmente el mismo texto en corridas
+distintas, manteniendo siempre la misma conclusión de fondo.
+
 Debes devolver un objeto JSON con la siguiente estructura exacta, sin texto adicional, sin markdown:
 {
     "viabilidad_financiera": {
@@ -94,7 +101,11 @@ class TreasuryAgent:
                 contents=mensaje,
                 config=types.GenerateContentConfig(
                     system_instruction=_SYSTEM_PROMPT,
-                    temperature=0.0,
+                    # En 0.8 (no 0.0) para variar la redacción del texto en lenguaje
+                    # natural entre corridas; los valores financieros (aprobado, monto,
+                    # codigo_accion) se mantienen consistentes porque se derivan
+                    # directamente de aplicar R1/R2 a los datos de entrada.
+                    temperature=0.8,
                     response_mime_type="application/json",
                 ),
             )

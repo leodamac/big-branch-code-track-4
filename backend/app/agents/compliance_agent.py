@@ -25,7 +25,28 @@ REGLAS DE NEGOCIO A EVALUAR:
 - R9 (Criticidad): Identifica riesgos Críticos (bloquean), Altos (acción inmediata), Medios (revisar) y Bajos (informativos).
 - R12 (Vigencia de Documentos): Papeleta de votación vigente 1 año, certificado bancario 3 meses, planilla de servicios 3 meses (usa la fecha de carga del documento como referencia si no hay fecha de emisión).
 - MSG-15 (Cadena de Endosos): Si el RUC del cliente no coincide con el último endosatario registrado en el historial de endosos de la nota, levanta riesgo CRÍTICO.
-- Documentación obligatoria: CEDULA, KYC y NOTA deben estar presentes y activos.
+- R11 (Documentación obligatoria): el sistema ya calculó de forma exacta y determinística qué documentos
+  obligatorios faltan para este expediente — lo encontrarás en la entrada como "Documentos Faltantes
+  (calculado por el sistema)". Esa lista es la ÚNICA fuente de verdad: no la recalcules a partir de
+  "Documentos Cargados en el Expediente" ni la contradigas. Genera exactamente un riesgo CRÍTICO por
+  cada documento que aparezca en esa lista (ninguno más, ninguno menos; si viene vacía, no generes
+  ningún riesgo por este concepto), y usa siempre "regla_activadora": "R11" para estos riesgos —
+  nunca uses R9 ni R12 para esto, esos IDs son para otras reglas. La "descripcion" debe explicar
+  explícitamente (a) por qué ese documento es obligatorio y (b) qué acción debe tomar el operador,
+  usando el formato "Falta <DOCUMENTO>: <explicación> — <qué hacer>". Redacta la explicación con tus
+  propias palabras cada vez que generes este riesgo — varía la redacción entre una corrida y otra
+  (sinónimos, orden de las ideas, tono), NO repitas literalmente el mismo texto en corridas distintas,
+  pero mantén siempre el motivo real de fondo según el documento:
+  - CEDULA: identifica al beneficiario y es indispensable para verificar su identidad antes de negociar.
+  - PAPELETA: certifica la situación electoral vigente del beneficiario, requerida para confirmar su
+    situación legal antes de negociar.
+  - CERTIFICADO: confirma la cuenta bancaria de destino para liquidar los fondos de la negociación.
+  - PLANILLA: comprueba el domicilio del cliente como parte de la debida diligencia (KYC complementario).
+  - KYC: sustenta la debida diligencia del cliente ("conozca a su cliente") exigida por normativa antilavado.
+  - CESION: formaliza legalmente la cesión de derechos sobre la nota de crédito, indispensable para
+    respaldar la transferencia de titularidad.
+  En todos los casos indica (con tus propias palabras) que se debe solicitar el documento al
+  cliente/responsable antes de continuar con la negociación.
 - Estado del RUC: si estado_ruc no es "ACTIVO", levanta riesgo CRÍTICO.
 
 FUERA DE TU ALCANCE: no evalúes ni menciones montos, saldos disponibles ni
@@ -39,7 +60,7 @@ Debes devolver un objeto JSON con la siguiente estructura exacta, sin texto adic
         {
             "nivel": "CRITICO" | "ALTO" | "MEDIO" | "BAJO",
             "descripcion": "Descripción detallada del riesgo en lenguaje natural",
-            "regla_activadora": "ID_DE_LA_REGLA (ej: R12, MSG-15, R9)",
+            "regla_activadora": "ID_DE_LA_REGLA (ej: R9, R11, R12, MSG-15)",
             "evidencia": "Justificación basada exactamente en los datos recibidos. No inventes datos."
         }
     ]
@@ -52,11 +73,13 @@ def _construir_mensaje_usuario(
     datos_cliente: dict[str, Any],
     datos_nota: dict[str, Any],
     documentos_presentes: list[dict[str, Any]],
+    documentos_faltantes: list[str],
 ) -> str:
     return f"""INFORMACIÓN DE ENTRADA:
 - Datos del Cliente: {json.dumps(datos_cliente, default=str)}
 - Datos de la Nota de Crédito: {json.dumps(datos_nota, default=str)}
-- Documentos Cargados en el Expediente: {json.dumps(documentos_presentes, default=str)}"""
+- Documentos Cargados en el Expediente: {json.dumps(documentos_presentes, default=str)}
+- Documentos Faltantes (calculado por el sistema, es la única fuente de verdad): {json.dumps(documentos_faltantes)}"""
 
 
 def _limpiar_json(texto: str) -> str:
@@ -86,8 +109,11 @@ class ComplianceAgent:
         datos_cliente: dict[str, Any],
         datos_nota: dict[str, Any],
         documentos_presentes: list[dict[str, Any]],
+        documentos_faltantes: list[str],
     ) -> list[dict[str, Any]]:
-        mensaje = _construir_mensaje_usuario(datos_cliente, datos_nota, documentos_presentes)
+        mensaje = _construir_mensaje_usuario(
+            datos_cliente, datos_nota, documentos_presentes, documentos_faltantes
+        )
 
         try:
             client = get_gemini_client()
@@ -96,7 +122,11 @@ class ComplianceAgent:
                 contents=mensaje,
                 config=types.GenerateContentConfig(
                     system_instruction=_SYSTEM_PROMPT,
-                    temperature=0.0,
+                    # Antes en 0.0 (determinístico): la redacción de cada riesgo salía
+                    # idéntica en cada corrida. Se sube para variar el texto entre
+                    # corridas; qué documentos están CRÍTICOS sigue siendo 100%
+                    # determinístico porque viene calculado en Python (documentos_faltantes).
+                    temperature=0.8,
                     response_mime_type="application/json",
                 ),
             )
