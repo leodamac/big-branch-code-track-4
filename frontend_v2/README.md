@@ -1,32 +1,64 @@
-# React + TypeScript + Vite
+# SRI Copilot - Frontend (V2)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Este es el proyecto frontend para la interfaz del **Asistente Inteligente de Notas de Crédito Tributarias (NCD)**. Está desarrollado como una aplicación de página única (SPA) moderna, rápida y responsiva.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🛠️ Stack Tecnológico
 
-## React Compiler
+- **Framework:** React 19
+- **Lenguaje:** TypeScript
+- **Herramienta de Construcción:** Vite
+- **Estilos:** Tailwind CSS (con paleta de colores premium personalizada)
+- **Iconos:** Lucide React
+- **Enrutamiento:** React Router DOM v7
+- **Linter:** Oxlint (analizador estático ultrarrápido)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the Oxlint configuration
+## 📁 Estructura del Proyecto
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+El código fuente dentro de `src/` está estructurado de la siguiente manera:
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
+- **`src/components/`**: Componentes de interfaz de usuario reutilizables.
+  - `Navbar.tsx`: Barra de navegación principal que incluye el selector de rol y la monitorización de conexión.
+  - `RoleSelector.tsx`: Selector de rol interactivo para simulación de perfiles.
+  - `EndosantesTimeline.tsx`: Componente que dibuja la línea de tiempo de la cadena de endosos y valida su consistencia.
+- **`src/pages/`**: Páginas principales de la aplicación.
+  - `ExpedientesList.tsx`: Tablero o bandeja de entrada con listado de expedientes, filtros de estado, buscador y métricas clave.
+  - `ExpedienteWorkspace.tsx`: Panel detallado del expediente con sección de carga de archivos, validación manual de campos extraídos y visualización de riesgos.
+- **`src/context/`**: Proveedores de contexto global.
+  - `AuthContext.tsx`: Gestión del rol simulado del usuario (Operador o Cumplimiento) y persistencia en almacenamiento local.
+- **`src/services/`**: Lógica de integración externa.
+  - `api.ts`: Cliente HTTP para consumir los endpoints de la API, manejo de reintentos e indicador de modo offline.
+- **`src/types/`**: Definiciones de tipos de TypeScript.
+  - `index.ts`: Modelos de datos para el cliente (Cliente, Nota de Crédito, Expediente, Riesgos, etc.).
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+---
+
+## ⚙️ Scripts Disponibles
+
+En el directorio del proyecto, puedes ejecutar los siguientes comandos:
+
+### `npm install`
+Instala todas las dependencias necesarias para ejecutar la aplicación.
+
+### `npm run dev`
+Inicia el servidor de desarrollo local en `http://localhost:5173`. Cuenta con reemplazo de módulos en caliente (HMR).
+
+### `npm run build`
+Compila la aplicación para producción en la carpeta `dist/`, optimizando los assets y verificando los tipos de TypeScript.
+
+### `npm run lint`
+Ejecuta Oxlint sobre el código fuente para asegurar las buenas prácticas y detectar errores de sintaxis o de React.
+
+### `npm run preview`
+Sirve de forma local la compilación de producción generada en `dist/` para probarla antes de desplegar.
+
+---
+
+## 🌐 Variables de Entorno
+
+La aplicación puede ser configurada mediante variables de entorno en un archivo `.env`:
+
+- `VITE_API_URL`: Dirección base de la API (por ejemplo, `http://localhost:8000`).

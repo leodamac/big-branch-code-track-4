@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -23,3 +24,6 @@ class NotaCreditoRead(SQLModel):
     valor_nominal: Decimal
     saldo_disponible: Decimal
     tipo: TipoNotaCredito
+    created_at: datetime
+    historial_endosos: list[dict[str, Any]] = []
+

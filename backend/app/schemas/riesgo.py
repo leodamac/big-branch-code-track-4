@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -13,6 +14,8 @@ class RiesgoRead(SQLModel):
     nivel: NivelRiesgo
     estado: EstadoRiesgo
     evidencia: dict[str, Any]
+    created_at: datetime
+
 
 
 class RiesgoList(SQLModel):

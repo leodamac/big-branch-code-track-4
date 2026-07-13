@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlmodel import SQLModel
@@ -13,7 +14,9 @@ class DocumentoRead(SQLModel):
     storage_path: str
     hash_sha256: str
     es_activo: bool
+    created_at: datetime
 
 
 class DocumentoList(SQLModel):
     items: list[DocumentoRead]
+

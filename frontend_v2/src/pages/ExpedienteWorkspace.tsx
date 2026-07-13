@@ -131,6 +131,8 @@ export const ExpedienteWorkspace: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadingDocType, setUploadingDocType] = useState<TipoDocumento | null>(null);
+  const [selectedDocType, setSelectedDocType] = useState<TipoDocumento | null>('NOTA');
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   
   // Risks state
   const [risks, setRisks] = useState<Riesgo[]>([]);
@@ -210,8 +212,8 @@ export const ExpedienteWorkspace: React.FC = () => {
         });
 
         // Initialize documents and endorsements
-        const docs = getInitialDocuments(data.id);
-        const endos = getInitialEndosos(data.id, data.cliente?.ruc || '');
+        const docs = data.documentos && data.documentos.length > 0 ? data.documentos : getInitialDocuments(data.id);
+        const endos = data.nota?.historial_endosos && data.nota.historial_endosos.length > 0 ? data.nota.historial_endosos : getInitialEndosos(data.id, data.cliente?.ruc || '');
         setDocuments(docs);
         setEndosos(endos);
 
@@ -245,97 +247,99 @@ export const ExpedienteWorkspace: React.FC = () => {
       .catch(console.error);
   };
 
-  // Recalculate risks and suggestions dynamically when data or docs change
+  // Recalculate risks and suggestions dynamically when data or docs change (offline mode fallback)
   useEffect(() => {
     if (!expediente) return;
 
-    const newRisks: Riesgo[] = [];
+    if (isNewCase) {
+      const newRisks: Riesgo[] = [];
 
-    // Rule 1: Monto a negociar > Saldo disponible
-    if (formData.monto_a_negociar > formData.saldo_disponible) {
-      newRisks.push({
-        id: 'r-monto-excede',
-        expediente_id: expediente.id,
-        descripcion: 'El monto solicitado a negociar excede el saldo disponible de la nota de crédito (Regla R1).',
-        nivel: 'ALTO',
-        estado: 'ABIERTO',
-        regla_activadora: 'R1',
-        created_at: new Date().toISOString()
-      } as any);
-    }
-
-    // Rule MSG-15: Chain of endorsements broken
-    // Check if there are endorsements, and if the last endosatario matches current client RUC
-    if (endosos.length > 0) {
-      const lastEndoso = endosos[endosos.length - 1];
-      if (lastEndoso.endosatario !== formData.ruc) {
+      // Rule 1: Monto a negociar > Saldo disponible
+      if (formData.monto_a_negociar > formData.saldo_disponible) {
         newRisks.push({
-          id: 'r-endoso-roto',
+          id: 'r-monto-excede',
           expediente_id: expediente.id,
-          descripcion: `El RUC del cliente (${formData.ruc}) no coincide con el último endosatario de la Nota (${lastEndoso.endosatario}). Cadena rota.`,
-          nivel: 'CRITICO',
+          descripcion: 'El monto solicitado a negociar excede el saldo disponible de la nota de crédito (Regla R1).',
+          nivel: 'ALTO',
           estado: 'ABIERTO',
-          regla_activadora: 'MSG-15',
+          regla_activadora: 'R1',
           created_at: new Date().toISOString()
         } as any);
       }
-    }
 
-    // Rule R12: Check document completeness
-    const requiredDocs: TipoDocumento[] = ['CEDULA', 'PAPELETA', 'CERTIFICADO', 'PLANILLA', 'KYC', 'CESION', 'NOTA'];
-    const uploadedTypes = documents.map(d => d.tipo);
-    const missingDocs = requiredDocs.filter(t => !uploadedTypes.includes(t));
+      // Rule MSG-15: Chain of endorsements broken
+      // Check if there are endorsements, and if the last endosatario matches current client RUC
+      if (endosos.length > 0) {
+        const lastEndoso = endosos[endosos.length - 1];
+        if (lastEndoso.endosatario !== formData.ruc) {
+          newRisks.push({
+            id: 'r-endoso-roto',
+            expediente_id: expediente.id,
+            descripcion: `El RUC del cliente (${formData.ruc}) no coincide con el último endosatario de la Nota (${lastEndoso.endosatario}). Cadena rota.`,
+            nivel: 'CRITICO',
+            estado: 'ABIERTO',
+            regla_activadora: 'MSG-15',
+            created_at: new Date().toISOString()
+          } as any);
+        }
+      }
 
-    if (missingDocs.length > 0) {
+      // Rule R12: Check document completeness
+      const requiredDocs: TipoDocumento[] = ['CEDULA', 'PAPELETA', 'CERTIFICADO', 'PLANILLA', 'KYC', 'CESION', 'NOTA'];
+      const uploadedTypes = documents.map(d => d.tipo);
+      const missingDocs = requiredDocs.filter(t => !uploadedTypes.includes(t));
+
+      if (missingDocs.length > 0) {
+        newRisks.push({
+          id: 'r-docs-faltantes',
+          expediente_id: expediente.id,
+          descripcion: `Falta documentación obligatoria: ${missingDocs.join(', ')}.`,
+          nivel: 'MEDIO',
+          estado: 'ABIERTO',
+          regla_activadora: 'R12',
+          created_at: new Date().toISOString()
+        } as any);
+      }
+
+      // General low risk information (informative)
       newRisks.push({
-        id: 'r-docs-faltantes',
+        id: 'r-info-sri',
         expediente_id: expediente.id,
-        descripcion: `Falta documentación obligatoria: ${missingDocs.join(', ')}.`,
-        nivel: 'MEDIO',
+        descripcion: 'Validación automatizada del SRI completada contra fuentes simuladas.',
+        nivel: 'BAJO',
         estado: 'ABIERTO',
-        regla_activadora: 'R12',
+        regla_activadora: 'R5',
         created_at: new Date().toISOString()
       } as any);
-    }
 
-    // General low risk information (informative)
-    newRisks.push({
-      id: 'r-info-sri',
-      expediente_id: expediente.id,
-      descripcion: 'Validación automatizada del SRI completada contra fuentes simuladas.',
-      nivel: 'BAJO',
-      estado: 'ABIERTO',
-      regla_activadora: 'R5',
-      created_at: new Date().toISOString()
-    } as any);
+      setRisks(newRisks);
 
-    setRisks(newRisks);
+      // Calculate suggestions (Analista de Tesorería mock agent)
+      const hasCritical = newRisks.some(r => r.nivel === 'CRITICO');
+      const hasHigh = newRisks.some(r => r.nivel === 'ALTO');
 
-    // Calculate suggestions (Analista de Tesorería mock agent)
-    const hasCritical = newRisks.some(r => r.nivel === 'CRITICO');
-    const hasHigh = newRisks.some(r => r.nivel === 'ALTO');
-
-    if (hasCritical) {
-      setSugerencia({
-        codigo_accion: 'VERIFICAR_ENDOSOS',
-        descripcion_sugerida: 'Revisar la cadena de endosos. El RUC del cliente no coincide con el último beneficiario. Enviar a Cumplimiento para aprobación especial.',
-      });
-    } else if (hasHigh) {
-      setSugerencia({
-        codigo_accion: 'SOLICITAR_CORRECCION_MONTO',
-        descripcion_sugerida: 'Corregir el monto a negociar. El monto solicitado excede el saldo disponible actual del título.',
-      });
-    } else if (missingDocs.length > 0) {
-      setSugerencia({
-        codigo_accion: 'SOLICITAR_CORRECCION_MONTO', // Fallback, could be "SOLICITAR_DOCUMENTACION"
-        descripcion_sugerida: 'Solicitar documentos pendientes al cliente para completar el expediente normativo.',
-      });
-    } else {
-      setSugerencia({
-        codigo_accion: 'PREPARAR_ORDEN',
-        descripcion_sugerida: 'Preparar borrador de orden de negociación. Todos los riesgos críticos están resueltos y los documentos están completos.',
-        rango_descuento_sugerido: formData.tipo === 'NCD_ISD' ? 'Descuento sugerido: 8.5% - 11.0% (Menor Liquidez ISD)' : 'Descuento sugerido: 5.0% - 7.5% (NCD Ordinaria)'
-      });
+      if (hasCritical) {
+        setSugerencia({
+          codigo_accion: 'VERIFICAR_ENDOSOS',
+          descripcion_sugerida: 'Revisar la cadena de endosos. El RUC del cliente no coincide con el último beneficiario. Enviar a Cumplimiento para aprobación especial.',
+        });
+      } else if (hasHigh) {
+        setSugerencia({
+          codigo_accion: 'SOLICITAR_CORRECCION_MONTO',
+          descripcion_sugerida: 'Corregir el monto a negociar. El monto solicitado excede el saldo disponible actual del título.',
+        });
+      } else if (missingDocs.length > 0) {
+        setSugerencia({
+          codigo_accion: 'SOLICITAR_CORRECCION_MONTO', // Fallback, could be "SOLICITAR_DOCUMENTACION"
+          descripcion_sugerida: 'Solicitar documentos pendientes al cliente para completar el expediente normativo.',
+        });
+      } else {
+        setSugerencia({
+          codigo_accion: 'PREPARAR_ORDEN',
+          descripcion_sugerida: 'Preparar borrador de orden de negociación. Todos los riesgos críticos están resueltos y los documentos están completos.',
+          rango_descuento_sugerido: formData.tipo === 'NCD_ISD' ? 'Descuento sugerido: 8.5% - 11.0% (Menor Liquidez ISD)' : 'Descuento sugerido: 5.0% - 7.5% (NCD Ordinaria)'
+        });
+      }
     }
   }, [formData, documents, endosos, expediente]);
 
@@ -403,7 +407,17 @@ export const ExpedienteWorkspace: React.FC = () => {
       usuario: 'Operador Asistido'
     })
     .then((newExp) => {
-      navigate(`/expedientes/${newExp.id}`);
+      if (pendingFile) {
+        api.subirDocumento(newExp.id, 'NOTA', pendingFile)
+          .then(() => {
+            navigate(`/expedientes/${newExp.id}`);
+          })
+          .catch(() => {
+            navigate(`/expedientes/${newExp.id}`);
+          });
+      } else {
+        navigate(`/expedientes/${newExp.id}`);
+      }
     })
     .catch((err) => {
       alert(`Error al crear el expediente: ${err.message || err}`);
@@ -417,72 +431,68 @@ export const ExpedienteWorkspace: React.FC = () => {
     setUploadingDocType(docType);
 
     if (isNewCase) {
-      const interval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            setIsUploading(false);
-            setUploadingDocType(null);
+      setPendingFile(file);
+      setUploadProgress(40);
+      api.extraerDocumento(file)
+        .then((extracted) => {
+          setUploadProgress(100);
+          setIsUploading(false);
+          setUploadingDocType(null);
 
-            setFormData({
-              ruc: '1790012345001',
-              razon_social: 'EMPRESA DE PRUEBA S.A.',
-              numero_autorizacion: '1234567890123456789012345678901234567',
-              tipo: 'NCD',
-              valor_nominal: 15000.00,
-              saldo_disponible: 15000.00,
-              monto_a_negociar: 12000.00
-            });
+          setFormData({
+            ruc: extracted.ruc,
+            razon_social: extracted.razon_social,
+            numero_autorizacion: extracted.numero_autorizacion,
+            tipo: extracted.tipo,
+            valor_nominal: extracted.valor_nominal,
+            saldo_disponible: extracted.saldo_disponible,
+            monto_a_negociar: extracted.saldo_disponible * 0.8
+          });
 
-            setFieldSources({
-              ruc: 'IA',
-              razon_social: 'REUTILIZADO',
-              numero_autorizacion: 'IA',
-              tipo: 'IA',
-              valor_nominal: 'IA',
-              saldo_disponible: 'IA',
-              monto_a_negociar: 'MANUAL'
-            });
+          setFieldSources({
+            ruc: 'IA',
+            razon_social: 'REUTILIZADO',
+            numero_autorizacion: 'IA',
+            tipo: 'IA',
+            valor_nominal: 'IA',
+            saldo_disponible: 'IA',
+            monto_a_negociar: 'MANUAL'
+          });
 
-            setConfirmedFields({
-              ruc: true,
-              razon_social: true,
-              numero_autorizacion: true,
-              tipo: true,
-              valor_nominal: true,
-              saldo_disponible: true,
-              monto_a_negociar: false
-            });
+          setConfirmedFields({
+            ruc: true,
+            razon_social: true,
+            numero_autorizacion: true,
+            tipo: true,
+            valor_nominal: true,
+            saldo_disponible: true,
+            monto_a_negociar: false
+          });
 
-            setDocuments([
-              {
-                id: 'doc-temp-nota',
-                expediente_id: 'nuevo',
-                tipo: 'NOTA',
-                version: 1,
-                storage_path: '/uploads/extracted-nota.pdf',
-                hash_sha256: 'sha256-ocr-extracted-nota-12345',
-                es_activo: true,
-                created_at: new Date().toISOString()
-              }
-            ]);
+          setDocuments([
+            {
+              id: 'doc-temp-nota',
+              expediente_id: 'nuevo',
+              tipo: 'NOTA',
+              version: 1,
+              storage_path: `/uploads/${file.name}`,
+              hash_sha256: `sha256-extracted-${file.name}`,
+              es_activo: true,
+              created_at: new Date().toISOString()
+            }
+          ]);
 
-            setEndosos([
-              {
-                endosante: "1790012345001",
-                razonSocialEndosante: "EMPRESA DE PRUEBA S.A.",
-                endosatario: "1790056789001",
-                razonSocialEndosatario: "EMPRESA COMPRADORA C.A.",
-                fecha: "2026-03-10",
-                valido: true
-              }
-            ]);
-
-            return 100;
+          if (extracted.historial_endosos) {
+            setEndosos(extracted.historial_endosos.map(e => ({ ...e, valido: true })));
+          } else {
+            setEndosos([]);
           }
-          return prev + 30;
+        })
+        .catch((err) => {
+          setIsUploading(false);
+          setUploadingDocType(null);
+          alert(`[MSG-05] Error al procesar extracción del documento: ${err.message || err}`);
         });
-      }, 500);
 
       return;
     }
@@ -510,7 +520,7 @@ export const ExpedienteWorkspace: React.FC = () => {
                 }
                 
                 // If it is the NCD note, simulate fields auto-population (OCR)
-                if (docType === 'NOTA') {
+                if (docType === 'NOTA' && isNewCase) {
                   setFormData(prev => ({
                     ...prev,
                     numero_autorizacion: '1234567890123456789012345678901234567',
@@ -533,6 +543,23 @@ export const ExpedienteWorkspace: React.FC = () => {
                       valido: true
                     }
                   ]);
+                } else if (docType === 'NOTA') {
+                  // Reload the latest data from the backend to get the actual database fields
+                  api.getExpedienteById(expediente!.id).then((updatedData) => {
+                    setExpediente(updatedData);
+                    setFormData({
+                      ruc: updatedData.cliente?.ruc || '',
+                      razon_social: updatedData.cliente?.razon_social || '',
+                      numero_autorizacion: updatedData.nota?.numero_autorizacion || '',
+                      tipo: updatedData.nota?.tipo || 'NCD',
+                      valor_nominal: Number(updatedData.nota?.valor_nominal) || 0,
+                      saldo_disponible: Number(updatedData.nota?.saldo_disponible) || 0,
+                      monto_a_negociar: Number(updatedData.monto_a_negociar) || 0
+                    });
+                    if (updatedData.nota?.historial_endosos) {
+                      setEndosos(updatedData.nota.historial_endosos);
+                    }
+                  });
                 }
 
                 // Trigger validation on backend
@@ -576,8 +603,12 @@ export const ExpedienteWorkspace: React.FC = () => {
       // Operator transitions
       if (expediente.estado === 'RECIBIDO') {
         newStatus = 'EN_VALIDACION';
-      } else if (expediente.estado === 'EN_VALIDACION' && action === 'PREPARAR_ORDEN') {
-        newStatus = 'LISTO_PARA_NEGOCIAR';
+      } else if (expediente.estado === 'EN_VALIDACION') {
+        if (action === 'PREPARAR_ORDEN') {
+          newStatus = 'LISTO_PARA_NEGOCIAR';
+        } else {
+          newStatus = 'PENDIENTE_DOCUMENTACION';
+        }
       } else if (expediente.estado === 'LISTO_PARA_NEGOCIAR') {
         newStatus = 'EN_NEGOCIACION';
       } else if (expediente.estado === 'EN_NEGOCIACION') {
@@ -740,6 +771,54 @@ export const ExpedienteWorkspace: React.FC = () => {
         {/* Left Column: Docs & Endosos Timeline (7/12 cols) */}
         <div className="lg:col-span-7 space-y-6">
           
+          {/* Simulated PDF Viewer (Path P13 Subtask 1) */}
+          {selectedDocType && documents.some(d => d.tipo === selectedDocType) && (
+            <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden animate-fade-in">
+              <div className="px-6 py-4 bg-slate-900/30 border-b border-slate-800 flex items-center justify-between">
+                <h3 className="font-bold text-sm text-slate-200 flex items-center gap-2">
+                  <FileText className="w-4.5 h-4.5 text-brand-400" />
+                  Visor de Documento: {selectedDocType}
+                </h3>
+                <span className="text-[10px] font-mono bg-brand-500/10 text-brand-400 border border-brand-500/20 px-2.5 py-0.5 rounded-full font-bold">
+                  VISTA PREVIA
+                </span>
+              </div>
+              <div className="p-6 bg-slate-950/20 flex flex-col items-center justify-center min-h-[220px] border-b border-slate-900">
+                <div className="w-full bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-2xl space-y-4 font-mono text-[10px] text-slate-400">
+                  <div className="flex justify-between border-b border-slate-800 pb-2 text-[8px] text-slate-500">
+                    <span>{selectedDocType}_OFICIAL_RECONOCIDO.PDF</span>
+                    <span>PÁGINA 1 / 1</span>
+                  </div>
+                  {selectedDocType === 'NOTA' ? (
+                    <div className="space-y-2">
+                      <div className="text-center font-bold text-slate-200 text-xs border-b border-slate-800 pb-1.5 mb-3">
+                        NOTA DE CRÉDITO DESMATERIALIZADA (NCD)
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-350">
+                        <div>RUC EMISOR: <span className="text-slate-200 font-semibold">1790012345001</span></div>
+                        <div>TIPO: <span className="text-slate-200 font-semibold">NCD ({formData.tipo})</span></div>
+                        <div className="sm:col-span-2">RUC BENEFICIARIO: <span className="text-slate-200 font-semibold">{formData.ruc}</span></div>
+                        <div className="sm:col-span-2">AUTORIZACIÓN: <span className="text-slate-200 font-semibold break-all">{formData.numero_autorizacion}</span></div>
+                        <div>VALOR NOMINAL: <span className="text-emerald-400 font-bold">${formData.valor_nominal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
+                        <div>SALDO DISPONIBLE: <span className="text-brand-400 font-bold">${formData.saldo_disponible.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
+                      </div>
+                      <div className="mt-4 border-t border-slate-850 pt-2 text-[8px] text-slate-500 italic">
+                        * DOCUMENTO OFICIAL FIRMADO ELECTRÓNICAMENTE POR EL SERVICIO DE RENTAS INTERNAS (SRI)
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 py-4 text-center text-slate-500">
+                      <FileText className="w-10 h-10 mx-auto text-slate-700 mb-1" />
+                      <p className="font-semibold text-xs text-slate-400">Documento {selectedDocType} cargado y validado</p>
+                      <p className="text-[9px] max-w-xs mx-auto">El archivo se encuentra almacenado localmente y fue verificado por el agente de cumplimiento. No se detectan inconsistencias visuales ni alteración de firmas.</p>
+                      <p className="text-[8px] text-slate-650 mt-1">SHA-256: {documents.find(d => d.tipo === selectedDocType)?.hash_sha256.substring(0, 32)}...</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          
           {/* Uploader & Documents Checklist */}
           <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
             <div className="px-6 py-4 bg-slate-900/30 border-b border-slate-800 flex items-center justify-between">
@@ -805,10 +884,15 @@ export const ExpedienteWorkspace: React.FC = () => {
                   return (
                     <div 
                       key={type}
+                      onClick={() => isPresent && setSelectedDocType(type)}
                       className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
-                        isPresent 
-                          ? 'bg-slate-900/40 border-slate-800/80 text-slate-200' 
-                          : 'bg-slate-950/40 border-dashed border-slate-850 text-slate-500 hover:border-slate-800'
+                        isPresent ? 'cursor-pointer hover:border-brand-500/40' : ''
+                      } ${
+                        selectedDocType === type
+                          ? 'bg-slate-900 border-brand-500 text-slate-200 ring-1 ring-brand-500/10'
+                          : isPresent 
+                            ? 'bg-slate-900/40 border-slate-800/80 text-slate-200' 
+                            : 'bg-slate-950/40 border-dashed border-slate-850 text-slate-500 hover:border-slate-800'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -1130,9 +1214,19 @@ export const ExpedienteWorkspace: React.FC = () => {
                   isOperador ? (
                     <button
                       onClick={() => setIsActionModalOpen(true)}
-                      className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white rounded-xl text-xs font-semibold shadow-lg hover:shadow-brand-500/10 transition-all duration-150"
+                      disabled={sugerencia?.codigo_accion === 'VERIFICAR_ENDOSOS'}
+                      className={`w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold shadow-lg transition-all duration-150 ${
+                        sugerencia?.codigo_accion === 'VERIFICAR_ENDOSOS'
+                          ? 'bg-slate-850 text-slate-550 border border-slate-800 cursor-not-allowed shadow-none'
+                          : 'bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white hover:shadow-brand-500/10'
+                      }`}
                     >
-                      <span>Aceptar y Ejecutar Próxima Acción</span>
+                      <span>
+                        {sugerencia?.codigo_accion === 'VERIFICAR_ENDOSOS' 
+                          ? 'Avance Bloqueado por Riesgo Crítico' 
+                          : 'Aceptar y Ejecutar Próxima Acción'
+                        }
+                      </span>
                       <ArrowUpRight className="w-4 h-4" />
                     </button>
                   ) : (
@@ -1179,7 +1273,7 @@ export const ExpedienteWorkspace: React.FC = () => {
                       : expediente.estado === 'RECIBIDO' 
                         ? 'EN_VALIDACION' 
                         : expediente.estado === 'EN_VALIDACION'
-                          ? 'LISTO_PARA_NEGOCIAR'
+                          ? (sugerencia?.codigo_accion === 'PREPARAR_ORDEN' ? 'LISTO_PARA_NEGOCIAR' : 'PENDIENTE_DOCUMENTACION')
                           : expediente.estado === 'LISTO_PARA_NEGOCIAR'
                             ? 'EN_NEGOCIACION'
                             : 'CERRADO'

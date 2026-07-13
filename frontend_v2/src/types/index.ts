@@ -99,6 +99,8 @@ export interface Expediente {
   responsable: string;
   created_at: string;
   updated_at: string;
+  documentos?: Documento[];
+  riesgos?: Riesgo[];
 }
 
 export interface DashboardInfo {

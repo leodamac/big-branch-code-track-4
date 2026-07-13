@@ -1,18 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { RoleSelector } from './RoleSelector';
-import { Cpu, Wifi, WifiOff } from 'lucide-react';
-import { registerOfflineListener } from '../services/api';
+import { Cpu } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const [isOffline, setIsOffline] = useState(false);
-
-  useEffect(() => {
-    return registerOfflineListener((offline) => {
-      setIsOffline(offline);
-    });
-  }, []);
-
   return (
     <nav className="sticky top-0 z-40 w-full glass-panel border-b border-slate-800/80 px-6 py-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between">

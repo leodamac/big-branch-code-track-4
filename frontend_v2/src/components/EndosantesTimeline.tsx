@@ -30,8 +30,15 @@ export const EndosantesTimeline: React.FC<EndosantesTimelineProps> = ({
             </span>
             <div>
               <span className="text-[10px] uppercase font-bold text-brand-400 tracking-wider">Beneficiario Originario</span>
-              <h4 className="font-semibold text-xs text-slate-200 mt-0.5">EMPRESA DE PRUEBA S.A.</h4>
-              <p className="text-[10px] text-slate-500 mt-0.5 font-mono">RUC: 1790012345001</p>
+              <h4 className="font-semibold text-xs text-slate-200 mt-0.5">
+                {hasEndosos 
+                  ? (endosos[0].razonSocialEndosante || 'Beneficiario Originario') 
+                  : (clienteRazonSocial || 'Beneficiario Originario')
+                }
+              </h4>
+              <p className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                RUC: {hasEndosos ? endosos[0].endosante : clienteRuc}
+              </p>
             </div>
           </div>
 

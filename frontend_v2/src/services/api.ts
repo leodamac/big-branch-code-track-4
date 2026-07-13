@@ -4,27 +4,6 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
-// Global state to track connection status
-let isOfflineMode = false;
-const listeners = new Set<(offline: boolean) => void>();
-
-export const registerOfflineListener = (listener: (offline: boolean) => void) => {
-  listeners.add(listener);
-  listener(isOfflineMode);
-  return () => {
-    listeners.delete(listener);
-  };
-};
-
-const setOfflineMode = (offline: boolean) => {
-  if (isOfflineMode !== offline) {
-    isOfflineMode = offline;
-    listeners.forEach(l => l(offline));
-  }
-};
-
-export const getOfflineMode = () => isOfflineMode;
-
 // HTTP Client wrapper with automatic error parsing and status mapping
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
@@ -32,16 +11,25 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const response = await fetch(url, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
         ...(options.headers || {})
       }
     });
 
-    setOfflineMode(false);
-
     if (!response.ok) {
       const errBody = await response.json().catch(() => ({}));
-      const message = errBody.detail || errBody.error?.message || `API Error: ${response.statusText}`;
+      let message = '';
+      if (errBody.detail) {
+        if (typeof errBody.detail === 'string') {
+          message = errBody.detail;
+        } else if (Array.isArray(errBody.detail)) {
+          message = errBody.detail.map((d: any) => `${d.loc ? d.loc.join('.') : ''}: ${d.msg}`).join(', ');
+        } else {
+          message = JSON.stringify(errBody.detail);
+        }
+      } else {
+        message = errBody.error?.message || `API Error: ${response.statusText}`;
+      }
       const code = errBody.error?.code || 'API_ERROR';
       throw new APIException(message, code, response.status);
     }
@@ -49,7 +37,6 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const json = await response.json();
     return (json && json.data !== undefined ? json.data : json) as T;
   } catch (error: any) {
-    setOfflineMode(true);
     throw error;
   }
 }
@@ -116,6 +103,25 @@ export const api = {
     return request<Expediente>('/api/expedientes', {
       method: 'POST',
       body: JSON.stringify(mappedPayload)
+    });
+  },
+
+  extraerDocumento: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return request<{
+      ruc: string;
+      razon_social: string;
+      numero_autorizacion: string;
+      tipo: TipoNotaCredito;
+      valor_nominal: number;
+      saldo_disponible: number;
+      historial_endosos: Endoso[];
+    }>('/api/expedientes/extraer-documento', {
+      method: 'POST',
+      body: formData,
+      headers: {}
     });
   },
 
