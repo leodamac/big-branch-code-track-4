@@ -5,14 +5,10 @@
 // esto expone un namespace `expedientes` con un método tipado por endpoint.
 
 import type {
-  AceptarAccionResponse,
-  AntecedentesResponse,
   CambiarEstadoResponse,
-  CrearExpedientePayload,
   Documento,
   ExpedienteDetail,
   ExpedienteListItem,
-  ExpedienteRead,
   Riesgo,
   HistorialEstado,
   SiguienteAccionResponse,
@@ -145,16 +141,7 @@ class ApiClient {
         params: { limit, offset },
       }).then((r) => r.items),
 
-    crear: (payload: CrearExpedientePayload) =>
-      this.request<ExpedienteRead>('/api/expedientes', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      }),
-
     obtener: (id: string) => this.request<ExpedienteDetail>(`/api/expedientes/${id}`),
-
-    antecedentes: (ruc: string) =>
-      this.request<AntecedentesResponse>('/api/expedientes/antecedentes', { params: { ruc } }),
 
     validar: (id: string, usuario: string) =>
       this.request<ValidacionResponse>(`/api/expedientes/${id}/validar`, {
@@ -176,12 +163,6 @@ class ApiClient {
     siguienteAccion: (id: string) =>
       this.request<SiguienteAccionResponse>(`/api/expedientes/${id}/siguiente-accion`),
 
-    aceptarSiguienteAccion: (id: string, accion: string, usuario: string, comentarios?: string) =>
-      this.request<AceptarAccionResponse>(`/api/expedientes/${id}/siguiente-accion/aceptar`, {
-        method: 'POST',
-        body: JSON.stringify({ accion, usuario, comentarios }),
-      }),
-
     subirDocumento: (id: string, tipo: TipoDocumento, file: File) => {
       const formData = new FormData();
       formData.append('tipo', tipo);
@@ -199,12 +180,6 @@ class ApiClient {
 
     listarRiesgos: (id: string) =>
       this.request<{ items: Riesgo[] }>(`/api/expedientes/${id}/riesgos`).then((r) => r.items),
-
-    resolverRiesgo: (id: string, riesgoId: string, usuario: string, comentarios?: string) =>
-      this.request<Riesgo>(`/api/expedientes/${id}/riesgos/${riesgoId}/resolver`, {
-        method: 'POST',
-        body: JSON.stringify({ usuario, comentarios }),
-      }),
   };
 }
 

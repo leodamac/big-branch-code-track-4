@@ -7,19 +7,33 @@ export default {
   theme: {
     extend: {
       colors: {
-        // High fidelity/premium color palette
+        // Notion-style neutral scale (warm grays, not pure slate)
+        ink: {
+          50: '#f7f6f3',
+          100: '#f1f1ef',
+          200: '#e9e9e7',
+          300: '#dfdedb',
+          400: '#c8c7c3',
+          500: '#9b9a97',
+          600: '#787774',
+          700: '#5f5e5b',
+          800: '#37352f',
+          900: '#2f2e2b',
+          950: '#191919',
+        },
+        // Primary accent, tuned to Notion's link/action blue
         brand: {
-          50: '#f0f7ff',
-          100: '#e0effe',
-          200: '#bae2fd',
-          300: '#7ccbfd',
-          400: '#38b2fb',
-          500: '#0ea0ea',
-          600: '#0280c7',
-          700: '#0366a1',
-          800: '#075785',
-          900: '#0c496e',
-          950: '#082f49',
+          50: '#eaf3fb',
+          100: '#d3e7f8',
+          200: '#a6cef0',
+          300: '#79b5e8',
+          400: '#4a9de1',
+          500: '#2383e2',
+          600: '#1a6dc0',
+          700: '#15579b',
+          800: '#114575',
+          900: '#0d3555',
+          950: '#082238',
         },
       },
     },

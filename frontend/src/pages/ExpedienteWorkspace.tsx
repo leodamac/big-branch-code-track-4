@@ -2,17 +2,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiClient, ApiError, formatMonto } from '../services/apiClient';
-import { EndosantesTimeline } from '../components/EndosantesTimeline';
 import type {
   ExpedienteDetail, ExpedienteEstado, TipoDocumento, RiesgoNivel, SiguienteAccionResponse,
 } from '../types';
 import {
   ArrowLeft, FileText, Activity, AlertTriangle, CheckCircle, Clock,
-  Ban, Shield, ArrowUpRight, AlertOctagon,
-  ChevronDown, ChevronUp, FileCode, CheckSquare, RefreshCw, Layers, History, Wrench,
+  Ban, Shield, AlertOctagon,
+  ChevronDown, ChevronUp, FileCode, CheckSquare, RefreshCw, History, Wrench,
 } from 'lucide-react';
 
-const TODOS_LOS_DOCS: TipoDocumento[] = ['CEDULA', 'PAPELETA', 'CERTIFICADO', 'PLANILLA', 'KYC', 'CESION', 'NOTA'];
+// NOTA no se sube como documento: sus datos ya llegan estructurados desde el
+// SRI (expediente.nota_credito), no hace falta pedirle un archivo al operador.
+const TODOS_LOS_DOCS: TipoDocumento[] = ['CEDULA', 'PAPELETA', 'CERTIFICADO', 'PLANILLA', 'KYC', 'CESION'];
 
 // Refleja exactamente app/services/state_machine.py del backend.
 const TRANSICIONES: Record<ExpedienteEstado, { evento: string; label: string; style: 'primary' | 'danger' | 'neutral' }[]> = {
@@ -34,21 +35,21 @@ const TRANSICIONES: Record<ExpedienteEstado, { evento: string; label: string; st
 };
 
 const statusColors: Record<ExpedienteEstado, string> = {
-  RECIBIDO: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  EN_VALIDACION: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  PENDIENTE_DOCUMENTACION: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
-  LISTO_PARA_NEGOCIAR: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-  EN_NEGOCIACION: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-  CERRADO: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
-  RECHAZADO: 'bg-red-500/10 text-red-400 border-red-500/20',
-  CANCELADO: 'bg-slate-700/10 text-slate-400 border-slate-700/20',
+  RECIBIDO: 'bg-[#e7f3f8] text-[#0b6e99]',
+  EN_VALIDACION: 'bg-[#fbf3db] text-[#9f6a00]',
+  PENDIENTE_DOCUMENTACION: 'bg-[#eae4f2] text-[#6940a5]',
+  LISTO_PARA_NEGOCIAR: 'bg-[#ddedea] text-[#0f7b6c]',
+  EN_NEGOCIACION: 'bg-[#f4dfeb] text-[#ad1a72]',
+  CERRADO: 'bg-ink-100 text-ink-600',
+  RECHAZADO: 'bg-[#fbe4e4] text-[#e03e3e]',
+  CANCELADO: 'bg-ink-100 text-ink-500',
 };
 
-const riesgoColors: Record<RiesgoNivel, { bg: string; border: string; text: string; icon: React.ReactNode }> = {
-  CRITICO: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400', icon: <Ban className="w-4 h-4 shrink-0" /> },
-  ALTO: { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-400', icon: <AlertOctagon className="w-4 h-4 shrink-0" /> },
-  MEDIO: { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400', icon: <AlertTriangle className="w-4 h-4 shrink-0" /> },
-  BAJO: { bg: 'bg-slate-500/10', border: 'border-slate-800', text: 'text-slate-400', icon: <Clock className="w-4 h-4 shrink-0" /> },
+const riesgoColors: Record<RiesgoNivel, { bg: string; text: string; icon: React.ReactNode }> = {
+  CRITICO: { bg: 'bg-[#fbe4e4]', text: 'text-[#e03e3e]', icon: <Ban className="w-4 h-4 shrink-0" /> },
+  ALTO: { bg: 'bg-[#faebdd]', text: 'text-[#d9730d]', icon: <AlertOctagon className="w-4 h-4 shrink-0" /> },
+  MEDIO: { bg: 'bg-[#fbf3db]', text: 'text-[#9f6a00]', icon: <AlertTriangle className="w-4 h-4 shrink-0" /> },
+  BAJO: { bg: 'bg-ink-100', text: 'text-ink-600', icon: <Clock className="w-4 h-4 shrink-0" /> },
 };
 
 const nivelPeso: Record<RiesgoNivel, number> = { CRITICO: 4, ALTO: 3, MEDIO: 2, BAJO: 1 };
@@ -66,12 +67,10 @@ export const ExpedienteWorkspace: React.FC = () => {
   const [isTransitioning, setIsTransitioning] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadingDocType, setUploadingDocType] = useState<TipoDocumento | null>(null);
-  const [resolvingRiesgoId, setResolvingRiesgoId] = useState<string | null>(null);
   const [showLowRisks, setShowLowRisks] = useState(false);
 
   const [sugerencia, setSugerencia] = useState<SiguienteAccionResponse | null>(null);
   const [isLoadingSugerencia, setIsLoadingSugerencia] = useState(false);
-  const [isAcceptingSugerencia, setIsAcceptingSugerencia] = useState(false);
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [comentarios, setComentarios] = useState('');
@@ -97,8 +96,8 @@ export const ExpedienteWorkspace: React.FC = () => {
   if (isLoading) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-24 text-center">
-        <RefreshCw className="w-8 h-8 text-brand-500 animate-spin mx-auto mb-3" />
-        <p className="text-slate-400 text-sm">Cargando expediente...</p>
+        <RefreshCw className="w-6 h-6 text-brand-500 animate-spin mx-auto mb-3" />
+        <p className="text-ink-500 text-sm">Cargando expediente...</p>
       </div>
     );
   }
@@ -106,10 +105,10 @@ export const ExpedienteWorkspace: React.FC = () => {
   if (loadError || !expediente) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-24 text-center">
-        <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-white">Expediente no encontrado</h2>
-        <p className="text-slate-500 text-sm mt-1">{loadError}</p>
-        <Link to="/" className="text-brand-400 hover:underline mt-3 inline-block text-sm">
+        <AlertTriangle className="w-10 h-10 text-[#e03e3e] mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-ink-900">Expediente no encontrado</h2>
+        <p className="text-ink-500 text-sm mt-1">{loadError}</p>
+        <Link to="/" className="text-brand-600 hover:underline mt-3 inline-block text-sm">
           Volver a la lista de expedientes
         </Link>
       </div>
@@ -144,19 +143,6 @@ export const ExpedienteWorkspace: React.FC = () => {
     }
   };
 
-  const handleResolverRiesgo = async (riesgoId: string) => {
-    setResolvingRiesgoId(riesgoId);
-    setActionError(null);
-    try {
-      await apiClient.expedientes.resolverRiesgo(expediente.id, riesgoId, usuarioActual);
-      await cargarExpediente();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Error al resolver el riesgo');
-    } finally {
-      setResolvingRiesgoId(null);
-    }
-  };
-
   const handleCargarSugerencia = async () => {
     setIsLoadingSugerencia(true);
     setActionError(null);
@@ -167,24 +153,6 @@ export const ExpedienteWorkspace: React.FC = () => {
       setActionError(err instanceof Error ? err.message : 'Error al consultar la sugerencia');
     } finally {
       setIsLoadingSugerencia(false);
-    }
-  };
-
-  const handleAceptarSugerencia = async () => {
-    if (!sugerencia) return;
-    setIsAcceptingSugerencia(true);
-    setActionError(null);
-    try {
-      await apiClient.expedientes.aceptarSiguienteAccion(
-        expediente.id,
-        sugerencia.proxima_accion.codigo_accion,
-        usuarioActual
-      );
-      await cargarExpediente();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Error al registrar la aceptación');
-    } finally {
-      setIsAcceptingSugerencia(false);
     }
   };
 
@@ -239,32 +207,32 @@ export const ExpedienteWorkspace: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
-          <Link to="/" className="flex items-center justify-center w-10 h-10 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-all duration-150">
+          <Link to="/" className="flex items-center justify-center w-9 h-9 rounded-md bg-white border border-ink-200 text-ink-500 hover:text-ink-900 hover:border-ink-300 transition-colors duration-150">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight text-white font-mono" title={expediente.id}>
+              <h1 className="text-xl font-semibold tracking-tight text-ink-900 font-mono" title={expediente.id}>
                 {expediente.id.slice(0, 13)}…
               </h1>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border font-mono ${statusColors[expediente.estado]}`}>
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold font-mono ${statusColors[expediente.estado]}`}>
                 {expediente.estado}
               </span>
             </div>
-            <p className="text-slate-400 text-sm mt-0.5">
-              Cliente: <span className="text-slate-200 font-semibold">{expediente.cliente.razon_social}</span>
+            <p className="text-ink-500 text-sm mt-0.5">
+              Cliente: <span className="text-ink-800 font-semibold">{expediente.cliente.razon_social}</span>
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-medium text-slate-450 flex items-center gap-2">
+          <div className="px-3.5 py-2 rounded-md bg-ink-50 border border-ink-200 text-xs font-medium text-ink-600 flex items-center gap-2">
             <Shield className="w-4 h-4 text-brand-500" />
-            <span>Rol: <strong className="text-slate-200">{usuarioActual}</strong></span>
+            <span>Rol: <strong className="text-ink-800">{usuarioActual}</strong></span>
           </div>
 
           {esEstadoTerminal ? (
-            <span className="text-xs text-slate-500 italic">Expediente en estado terminal, sin acciones disponibles.</span>
+            <span className="text-xs text-ink-500 italic">Expediente en estado terminal, sin acciones disponibles.</span>
           ) : (
             <div className="flex gap-2">
               {transicionesDisponibles.map((t) => (
@@ -272,12 +240,12 @@ export const ExpedienteWorkspace: React.FC = () => {
                   key={t.evento}
                   onClick={() => confirmarTransicion(t.evento)}
                   disabled={isTransitioning !== null}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50 ${
+                  className={`px-3.5 py-2 rounded-md text-xs font-semibold transition-colors disabled:opacity-50 ${
                     t.style === 'primary'
-                      ? 'bg-brand-600 hover:bg-brand-500 text-white shadow-lg shadow-brand-600/10'
+                      ? 'bg-brand-600 hover:bg-brand-700 text-white'
                       : t.style === 'danger'
-                      ? 'bg-red-900/10 hover:bg-red-900/20 border border-red-500/30 text-red-400'
-                      : 'bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300'
+                      ? 'bg-[#fbe4e4] hover:bg-[#f6d0d0] text-[#e03e3e]'
+                      : 'bg-white hover:bg-ink-50 border border-ink-200 text-ink-700'
                   }`}
                 >
                   {t.label}
@@ -289,7 +257,7 @@ export const ExpedienteWorkspace: React.FC = () => {
       </div>
 
       {actionError && (
-        <div className="p-3.5 rounded-xl bg-red-950/20 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
+        <div className="p-3.5 rounded-md bg-[#fbe4e4] text-[#e03e3e] text-xs flex items-center gap-2">
           <AlertOctagon className="w-4 h-4 shrink-0" />
           <span>{actionError}</span>
         </div>
@@ -299,10 +267,10 @@ export const ExpedienteWorkspace: React.FC = () => {
         {/* Left Column */}
         <div className="lg:col-span-7 space-y-6">
           {/* Datos de la nota / cliente (solo lectura, vienen del SRI) */}
-          <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-            <div className="px-6 py-4 bg-slate-900/30 border-b border-slate-800">
-              <h3 className="font-bold text-sm text-slate-200 flex items-center gap-2">
-                <CheckSquare className="w-4.5 h-4.5 text-brand-400" />
+          <div className="panel rounded-lg overflow-hidden">
+            <div className="px-6 py-4 bg-ink-50 border-b border-ink-200">
+              <h3 className="font-semibold text-sm text-ink-800 flex items-center gap-2">
+                <CheckSquare className="w-4.5 h-4.5 text-brand-600" />
                 Datos del Cliente y la Nota (SRI)
               </h3>
             </div>
@@ -320,22 +288,22 @@ export const ExpedienteWorkspace: React.FC = () => {
           </div>
 
           {/* Documentos */}
-          <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-            <div className="px-6 py-4 bg-slate-900/30 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="font-bold text-sm text-slate-200 flex items-center gap-2">
-                <FileText className="w-4.5 h-4.5 text-brand-400" />
+          <div className="panel rounded-lg overflow-hidden">
+            <div className="px-6 py-4 bg-ink-50 border-b border-ink-200 flex items-center justify-between">
+              <h3 className="font-semibold text-sm text-ink-800 flex items-center gap-2">
+                <FileText className="w-4.5 h-4.5 text-brand-600" />
                 Documentación Obligatoria
               </h3>
-              <span className="text-xs text-slate-500 font-mono font-medium">
+              <span className="text-xs text-ink-500 font-mono font-medium">
                 {documentosPorTipo.size} / {TODOS_LOS_DOCS.length} cargados
               </span>
             </div>
 
             <div className="p-6 space-y-4">
               {isUploading && (
-                <div className="p-4 border border-dashed border-brand-500/40 rounded-xl bg-slate-950/20 text-center">
+                <div className="p-4 border border-dashed border-brand-300 rounded-md bg-brand-50 text-center">
                   <RefreshCw className="w-6 h-6 text-brand-500 animate-spin mx-auto mb-2" />
-                  <p className="text-xs font-semibold text-slate-200">Subiendo {uploadingDocType}...</p>
+                  <p className="text-xs font-semibold text-ink-800">Subiendo {uploadingDocType}...</p>
                 </div>
               )}
 
@@ -346,15 +314,15 @@ export const ExpedienteWorkspace: React.FC = () => {
                   return (
                     <div
                       key={type}
-                      className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
-                        isPresent ? 'bg-slate-900/40 border-slate-800/80 text-slate-200' : 'bg-slate-950/40 border-dashed border-slate-850 text-slate-500 hover:border-slate-800'
+                      className={`p-3 rounded-md border flex items-center justify-between transition-colors ${
+                        isPresent ? 'bg-white border-ink-200 text-ink-800' : 'bg-ink-50 border-dashed border-ink-300 text-ink-500 hover:border-ink-400'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        {isPresent ? <CheckCircle className="w-4.5 h-4.5 text-emerald-400 shrink-0" /> : <Clock className="w-4.5 h-4.5 text-slate-650 shrink-0" />}
+                        {isPresent ? <CheckCircle className="w-4.5 h-4.5 text-[#0f7b6c] shrink-0" /> : <Clock className="w-4.5 h-4.5 text-ink-400 shrink-0" />}
                         <div className="truncate">
-                          <div className={`text-xs font-bold tracking-wide ${isPresent ? 'text-slate-350' : 'text-slate-600'}`}>{type}</div>
-                          <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                          <div className={`text-xs font-bold tracking-wide ${isPresent ? 'text-ink-700' : 'text-ink-500'}`}>{type}</div>
+                          <div className="text-[10px] text-ink-500 truncate mt-0.5">
                             {isPresent ? `v${doc!.version} · ${doc!.hash_sha256.slice(0, 12)}…` : 'Pendiente de cargar'}
                           </div>
                         </div>
@@ -366,10 +334,10 @@ export const ExpedienteWorkspace: React.FC = () => {
                             setTimeout(() => document.getElementById('file-uploader-input')?.click(), 50);
                           }}
                           disabled={isUploading}
-                          className={`p-1.5 rounded-lg border text-[10px] font-bold transition-all shrink-0 disabled:opacity-50 ${
+                          className={`p-1.5 rounded-md border text-[10px] font-bold transition-colors shrink-0 disabled:opacity-50 ${
                             isPresent
-                              ? 'bg-slate-900 border-slate-850 hover:bg-slate-800 text-slate-400 hover:text-white'
-                              : 'bg-brand-500/10 border-brand-500/20 hover:bg-brand-500/20 text-brand-400'
+                              ? 'bg-white border-ink-200 hover:bg-ink-50 text-ink-500 hover:text-ink-800'
+                              : 'bg-brand-50 border-brand-200 hover:bg-brand-100 text-brand-600'
                           }`}
                         >
                           {isPresent ? 'Reemplazar' : 'Cargar'}
@@ -382,46 +350,29 @@ export const ExpedienteWorkspace: React.FC = () => {
             </div>
           </div>
 
-          {/* Endosos */}
-          <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-            <div className="px-6 py-4 bg-slate-900/30 border-b border-slate-800">
-              <h3 className="font-bold text-sm text-slate-200 flex items-center gap-2">
-                <Layers className="w-4.5 h-4.5 text-brand-400" />
-                Cadena de Endosos Registrada en SRI
-              </h3>
-            </div>
-            <div className="p-6">
-              <EndosantesTimeline
-                endosos={expediente.nota_credito.historial_endosos || []}
-                clienteRuc={expediente.cliente.ruc}
-                clienteRazonSocial={expediente.cliente.razon_social}
-              />
-            </div>
-          </div>
-
           {/* Historial */}
-          <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-            <div className="px-6 py-4 bg-slate-900/30 border-b border-slate-800">
-              <h3 className="font-bold text-sm text-slate-200 flex items-center gap-2">
-                <History className="w-4.5 h-4.5 text-brand-400" />
+          <div className="panel rounded-lg overflow-hidden">
+            <div className="px-6 py-4 bg-ink-50 border-b border-ink-200">
+              <h3 className="font-semibold text-sm text-ink-800 flex items-center gap-2">
+                <History className="w-4.5 h-4.5 text-brand-600" />
                 Historial de Estados
               </h3>
             </div>
             <div className="p-6 space-y-3">
               {expediente.historial_estados.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-2">Sin eventos registrados.</p>
+                <p className="text-xs text-ink-500 text-center py-2">Sin eventos registrados.</p>
               ) : (
                 expediente.historial_estados.map((h, i) => (
-                  <div key={i} className="flex items-start gap-3 text-xs border-b border-slate-850/60 last:border-0 pb-3 last:pb-0">
+                  <div key={i} className="flex items-start gap-3 text-xs border-b border-ink-200 last:border-0 pb-3 last:pb-0">
                     <div className="w-1.5 h-1.5 rounded-full bg-brand-500 mt-1.5 shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 font-mono">
-                        {h.estado_anterior && <span className="text-slate-500">{h.estado_anterior}</span>}
-                        {h.estado_anterior && <span className="text-slate-600">→</span>}
-                        <span className="text-slate-200 font-semibold">{h.estado_nuevo}</span>
+                        {h.estado_anterior && <span className="text-ink-500">{h.estado_anterior}</span>}
+                        {h.estado_anterior && <span className="text-ink-400">→</span>}
+                        <span className="text-ink-800 font-semibold">{h.estado_nuevo}</span>
                       </div>
-                      <p className="text-slate-400 mt-0.5">{h.comentarios}</p>
-                      <div className="text-[10px] text-slate-600 mt-0.5">
+                      <p className="text-ink-600 mt-0.5">{h.comentarios}</p>
+                      <div className="text-[10px] text-ink-400 mt-0.5">
                         {h.usuario} · {new Date(h.created_at).toLocaleString('es-EC')}
                       </div>
                     </div>
@@ -435,48 +386,51 @@ export const ExpedienteWorkspace: React.FC = () => {
         {/* Right Column */}
         <div className="lg:col-span-5 space-y-6">
           {/* Validar */}
-          <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-            <div className="px-6 py-4 bg-slate-900/30 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="font-bold text-sm text-slate-200 flex items-center gap-2">
-                <Shield className="w-4.5 h-4.5 text-brand-400" />
-                Validación (Agente de Cumplimiento)
+          <div className="panel rounded-lg overflow-hidden">
+            <div className="px-6 py-4 bg-ink-50 border-b border-ink-200 flex items-center justify-between">
+              <h3 className="font-semibold text-sm text-ink-800 flex items-center gap-2">
+                <Shield className="w-4.5 h-4.5 text-brand-600" />
+                Validación del Agente de Cumplimiento
               </h3>
+              <span className="px-1.5 py-0.5 rounded bg-brand-50 text-brand-600 border border-brand-200 text-[9px] font-bold">
+                COMPLIANCE AGENT
+              </span>
             </div>
             <div className="p-6">
-              <p className="text-xs text-slate-400 mb-4">
-                Analiza cliente, nota y documentos con IA, y genera los riesgos correspondientes.
+              <p className="text-sm text-ink-800 font-semibold mb-4">
+                Analiza documentos faltantes con IA y genera los riesgos correspondientes.
               </p>
               <button
                 onClick={handleValidar}
                 disabled={isValidating}
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-lg transition-all"
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white rounded-md text-xs font-semibold transition-colors"
               >
                 {isValidating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckSquare className="w-4 h-4" />}
-                <span>{isValidating ? 'Analizando con IA...' : 'Validar Expediente'}</span>
+                <span>{isValidating ? 'Analizando con IA...' : 'Validar Documentos Faltantes'}</span>
               </button>
             </div>
           </div>
 
-          {/* Riesgos */}
-          <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-            <div className="px-6 py-4 bg-slate-900/30 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="font-bold text-sm text-slate-200 flex items-center gap-2">
-                <AlertTriangle className="w-4.5 h-4.5 text-amber-400" />
-                Matriz de Riesgos
-              </h3>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-900 border border-slate-800 text-slate-400">
-                {expediente.riesgos.length} Detectados
-              </span>
-            </div>
+          {/* Riesgos: solo aparece si el agente detectó al menos uno */}
+          {expediente.riesgos.length > 0 && (
+            <div className="panel rounded-lg overflow-hidden">
+              <div className="px-6 py-4 bg-ink-50 border-b border-ink-200 flex items-center justify-between">
+                <h3 className="font-semibold text-sm text-ink-800 flex items-center gap-2">
+                  <AlertTriangle className="w-4.5 h-4.5 text-[#9f6a00]" />
+                  Matriz de Riesgos
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-ink-100 text-ink-600">
+                  {expediente.riesgos.length} Detectados
+                </span>
+              </div>
 
-            <div className="p-6 space-y-4">
-              {visibleRisks.length > 0 ? (
+              <div className="p-6 space-y-4">
                 <div className="space-y-3">
                   {visibleRisks.map((risk) => {
                     const esFalloDeSistema = risk.evidencia?.regla_activadora === 'SISTEMA';
                     const clr = riesgoColors[risk.nivel];
                     return (
-                      <div key={risk.id} className={`p-3.5 rounded-xl border flex items-start gap-3 text-xs animate-fade-in ${clr.bg} ${clr.border} ${clr.text}`}>
+                      <div key={risk.id} className={`p-3.5 rounded-md border border-transparent flex items-start gap-3 text-xs animate-fade-in ${clr.bg} ${clr.text}`}>
                         {esFalloDeSistema ? <Wrench className="w-4 h-4 shrink-0" /> : clr.icon}
                         <div className="space-y-1 flex-1 min-w-0">
                           <div className="font-bold uppercase tracking-wider text-[9px] flex items-center gap-1.5">
@@ -489,17 +443,9 @@ export const ExpedienteWorkspace: React.FC = () => {
                               </>
                             )}
                           </div>
-                          <p className="text-slate-300 font-medium leading-relaxed">{risk.descripcion}</p>
-                          {risk.estado === 'ABIERTO' ? (
-                            <button
-                              onClick={() => handleResolverRiesgo(risk.id)}
-                              disabled={resolvingRiesgoId === risk.id}
-                              className="mt-1.5 text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-950/60 border border-slate-800 hover:border-emerald-500/40 hover:text-emerald-400 transition-all disabled:opacity-50"
-                            >
-                              {resolvingRiesgoId === risk.id ? 'Resolviendo...' : 'Marcar como resuelto'}
-                            </button>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 mt-1">
+                          <p className="text-ink-700 font-medium leading-relaxed">{risk.descripcion}</p>
+                          {risk.estado === 'RESUELTO' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#0f7b6c] mt-1">
                               <CheckCircle className="w-3 h-3" /> Resuelto
                             </span>
                           )}
@@ -508,34 +454,28 @@ export const ExpedienteWorkspace: React.FC = () => {
                     );
                   })}
                 </div>
-              ) : (
-                <div className="py-6 text-center text-slate-500 text-xs flex flex-col items-center justify-center space-y-2">
-                  <CheckCircle className="w-10 h-10 text-emerald-500/50" />
-                  <p className="font-semibold text-slate-350">Sin riesgos detectados todavía</p>
-                  <p>Corre la validación para que el agente los analice.</p>
-                </div>
-              )}
 
-              {showFocusMode && lowerRisks.length > 0 && (
-                <button
-                  onClick={() => setShowLowRisks(!showLowRisks)}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 hover:bg-slate-900 border border-transparent hover:border-slate-850 text-slate-450 hover:text-slate-300 rounded-xl text-xs font-semibold transition-all mt-4"
-                >
-                  <span>{showLowRisks ? 'Ocultar riesgos informativos' : `Mostrar ${lowerRisks.length} riesgos informativos adicionales`}</span>
-                  {showLowRisks ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </button>
-              )}
+                {showFocusMode && lowerRisks.length > 0 && (
+                  <button
+                    onClick={() => setShowLowRisks(!showLowRisks)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 hover:bg-ink-50 border border-transparent hover:border-ink-200 text-ink-500 hover:text-ink-800 rounded-md text-xs font-semibold transition-colors mt-4"
+                  >
+                    <span>{showLowRisks ? 'Ocultar riesgos informativos' : `Mostrar ${lowerRisks.length} riesgos informativos adicionales`}</span>
+                    {showLowRisks ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Siguiente acción (Agente de Tesorería) */}
-          <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden glow-brand">
-            <div className="px-6 py-4 bg-slate-900/30 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="font-bold text-sm text-slate-200 flex items-center gap-2">
-                <Activity className="w-4.5 h-4.5 text-brand-400" />
+          <div className="panel rounded-lg overflow-hidden">
+            <div className="px-6 py-4 bg-ink-50 border-b border-ink-200 flex items-center justify-between">
+              <h3 className="font-semibold text-sm text-ink-800 flex items-center gap-2">
+                <Activity className="w-4.5 h-4.5 text-brand-600" />
                 Sugerencia del Agente de Tesorería
               </h3>
-              <span className="px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-400 border border-brand-500/20 text-[9px] font-bold">
+              <span className="px-1.5 py-0.5 rounded bg-brand-50 text-brand-600 border border-brand-200 text-[9px] font-bold">
                 TREASURY AGENT
               </span>
             </div>
@@ -545,57 +485,36 @@ export const ExpedienteWorkspace: React.FC = () => {
                 <button
                   onClick={handleCargarSugerencia}
                   disabled={isLoadingSugerencia}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 disabled:opacity-50 text-slate-200 rounded-xl text-xs font-semibold transition-all"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white rounded-md text-xs font-semibold transition-colors"
                 >
                   {isLoadingSugerencia ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileCode className="w-4 h-4" />}
                   <span>{isLoadingSugerencia ? 'Consultando IA...' : 'Consultar sugerencia'}</span>
                 </button>
               ) : sugerencia._error ? (
-                <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 text-slate-400 flex items-start gap-2.5">
+                <div className="p-3.5 rounded-md bg-ink-50 border border-ink-200 text-ink-600 flex items-start gap-2.5">
                   <Wrench className="w-4 h-4 shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-bold text-[9px] uppercase tracking-wider text-slate-300">No se pudo evaluar automáticamente</div>
-                    <p className="mt-1 leading-relaxed">{sugerencia.proxima_accion.descripcion_sugerida}</p>
+                  <div className="min-w-0">
+                    <div className="font-bold text-[9px] uppercase tracking-wider text-ink-700">No se pudo evaluar automáticamente</div>
+                    <p className="mt-1 leading-relaxed break-words">{sugerencia.proxima_accion.descripcion_sugerida}</p>
                   </div>
                 </div>
               ) : (
                 <>
-                  <div className="p-4 bg-brand-500/5 border border-brand-500/20 rounded-xl space-y-2.5">
-                    <div className="font-bold text-brand-400 uppercase tracking-wider text-[9px]">
+                  <div className="p-4 bg-brand-50 border border-brand-200 rounded-md space-y-2.5">
+                    <div className="font-bold text-brand-600 uppercase tracking-wider text-[9px]">
                       ACCIÓN PROPUESTA: {sugerencia.proxima_accion.codigo_accion}
                     </div>
-                    <p className="text-slate-350 font-medium leading-relaxed">{sugerencia.proxima_accion.descripcion_sugerida}</p>
+                    <p className="text-ink-700 font-medium leading-relaxed break-words">{sugerencia.proxima_accion.descripcion_sugerida}</p>
                     {sugerencia.sugerencia_tesoreria.rango_descuento_sugerido && (
-                      <div className="text-[10px] font-semibold text-slate-400 flex items-center gap-1.5 bg-slate-950/80 px-2.5 py-1.5 rounded-lg w-max border border-slate-850">
-                        <FileCode className="w-3.5 h-3.5 text-brand-400" />
-                        <span>Descuento sugerido: {sugerencia.sugerencia_tesoreria.rango_descuento_sugerido}</span>
+                      <div className="text-[10px] font-semibold text-ink-600 flex items-start gap-1.5 bg-white px-2.5 py-1.5 rounded-md border border-ink-200">
+                        <FileCode className="w-3.5 h-3.5 text-brand-600 shrink-0 mt-0.5" />
+                        <span className="break-words min-w-0">Descuento sugerido: {sugerencia.sugerencia_tesoreria.rango_descuento_sugerido}</span>
                       </div>
                     )}
                     {sugerencia.viabilidad_financiera.aprobado === false && (
-                      <div className="text-[10px] font-semibold text-red-400">{sugerencia.viabilidad_financiera.motivo_rechazo}</div>
+                      <div className="text-[10px] font-semibold text-[#e03e3e] break-words">{sugerencia.viabilidad_financiera.motivo_rechazo}</div>
                     )}
                   </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleCargarSugerencia}
-                      disabled={isLoadingSugerencia}
-                      className="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
-                    >
-                      Recalcular
-                    </button>
-                    <button
-                      onClick={handleAceptarSugerencia}
-                      disabled={isAcceptingSugerencia}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-lg transition-all"
-                    >
-                      <span>{isAcceptingSugerencia ? 'Registrando...' : 'Aceptar (queda en historial)'}</span>
-                      <ArrowUpRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-550 italic">
-                    Aceptar solo deja constancia en el historial — no cambia el estado. Usa los botones de arriba para avanzar el expediente.
-                  </p>
                 </>
               )}
             </div>
@@ -605,38 +524,38 @@ export const ExpedienteWorkspace: React.FC = () => {
 
       {/* Modal de confirmación de transición */}
       {pendingEvento && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md glass-panel rounded-2xl border border-slate-800 shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 bg-slate-900/40 border-b border-slate-800/80 flex items-center justify-between">
-              <h3 className="font-bold text-slate-200 text-sm">Confirmar Transición</h3>
-              <button onClick={() => setPendingEvento(null)} className="text-slate-400 hover:text-slate-250 text-xs">✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/40 animate-fade-in">
+          <div className="w-full max-w-md bg-white rounded-lg border border-ink-200 shadow-xl overflow-hidden">
+            <div className="px-6 py-4 bg-white border-b border-ink-200 flex items-center justify-between">
+              <h3 className="font-semibold text-ink-900 text-sm">Confirmar Transición</h3>
+              <button onClick={() => setPendingEvento(null)} className="text-ink-400 hover:text-ink-800 text-xs">✕</button>
             </div>
             <div className="p-6 space-y-4">
-              <div className="p-4 bg-slate-900/50 border border-slate-850 rounded-xl space-y-2">
-                <span className="text-[9px] uppercase font-bold text-slate-500">Evento:</span>
+              <div className="p-4 bg-ink-50 border border-ink-200 rounded-md space-y-2">
+                <span className="text-[9px] uppercase font-bold text-ink-500">Evento:</span>
                 <div className="flex items-center gap-2.5 text-xs">
-                  <span className="px-2 py-0.5 rounded font-mono border border-slate-800 bg-slate-950 text-slate-400">{expediente.estado}</span>
-                  <span className="text-slate-600">→</span>
-                  <span className="px-2 py-0.5 rounded font-mono border border-brand-500/20 bg-brand-500/10 text-brand-400 font-bold">{pendingEvento}</span>
+                  <span className="px-2 py-0.5 rounded font-mono border border-ink-200 bg-white text-ink-600">{expediente.estado}</span>
+                  <span className="text-ink-400">→</span>
+                  <span className="px-2 py-0.5 rounded font-mono border border-brand-200 bg-brand-50 text-brand-600 font-bold">{pendingEvento}</span>
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Comentarios (opcional)</label>
+                <label className="text-xs font-semibold text-ink-500 uppercase tracking-wide">Comentarios (opcional)</label>
                 <textarea
                   value={comentarios}
                   onChange={(e) => setComentarios(e.target.value)}
                   placeholder="Justificación u observaciones..."
-                  className="w-full h-24 px-3 py-2 bg-slate-950 border border-slate-850 focus:border-brand-500/60 rounded-xl text-sm text-slate-200 placeholder-slate-650 focus:outline-none transition-colors"
+                  className="w-full h-24 px-3 py-2 bg-white border border-ink-200 focus:border-brand-400 rounded-md text-sm text-ink-800 placeholder-ink-400 focus:outline-none transition-colors"
                 />
               </div>
-              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-850/60">
-                <button onClick={() => setPendingEvento(null)} className="px-4 py-2 border border-slate-800 hover:border-slate-700 text-slate-450 hover:text-slate-250 rounded-xl text-sm font-semibold transition-all">
+              <div className="pt-4 flex items-center justify-end gap-3 border-t border-ink-200">
+                <button onClick={() => setPendingEvento(null)} className="px-4 py-2 border border-ink-200 hover:bg-ink-50 text-ink-600 hover:text-ink-800 rounded-md text-sm font-semibold transition-colors">
                   Cancelar
                 </button>
                 <button
                   onClick={ejecutarTransicion}
                   disabled={isTransitioning !== null}
-                  className="px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white rounded-xl text-sm font-semibold shadow-lg transition-all"
+                  className="px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white rounded-md text-sm font-semibold transition-colors"
                 >
                   {isTransitioning ? 'Aplicando...' : 'Confirmar y Aplicar'}
                 </button>
@@ -647,7 +566,7 @@ export const ExpedienteWorkspace: React.FC = () => {
       )}
 
       {isCumplimiento && (
-        <div className="text-[10px] text-slate-600 text-center italic">
+        <div className="text-[10px] text-ink-400 text-center italic">
           Rol de cumplimiento: mismos permisos de acción que el operador en este flujo (no hay aprobación diferenciada en el backend todavía).
         </div>
       )}
@@ -659,8 +578,8 @@ const Field: React.FC<{ label: string; value: string; mono?: boolean; span2?: bo
   label, value, mono, span2, highlight,
 }) => (
   <div className={span2 ? 'col-span-2' : ''}>
-    <div className="text-[9px] uppercase font-semibold text-slate-500 tracking-wider">{label}</div>
-    <div className={`mt-0.5 ${mono ? 'font-mono' : ''} ${highlight ? 'text-brand-400 font-bold text-sm' : 'text-slate-200 font-medium'}`}>
+    <div className="text-[9px] uppercase font-semibold text-ink-500 tracking-wider">{label}</div>
+    <div className={`mt-0.5 ${mono ? 'font-mono' : ''} ${highlight ? 'text-brand-600 font-bold text-sm' : 'text-ink-800 font-medium'}`}>
       {value}
     </div>
   </div>

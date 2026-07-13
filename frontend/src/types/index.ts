@@ -97,16 +97,6 @@ export interface ExpedienteListItem {
   nota_credito: NotaCredito;
 }
 
-// POST /expedientes (respuesta)
-export interface ExpedienteRead {
-  id: string;
-  estado: ExpedienteEstado;
-  cliente_id: string;
-  nota_id: string;
-  monto_a_negociar: string;
-  responsable: string;
-}
-
 // GET /expedientes/{id}
 export interface ExpedienteDetail {
   id: string;
@@ -118,18 +108,6 @@ export interface ExpedienteDetail {
   documentos: Documento[];
   riesgos: Riesgo[];
   historial_estados: HistorialEstado[];
-}
-
-// GET /expedientes/antecedentes?ruc=...
-export interface ExpedienteAntecedente {
-  id: string;
-  estado: ExpedienteEstado;
-  numero_autorizacion: string;
-}
-
-export interface AntecedentesResponse {
-  cliente: Cliente;
-  expedientes_anteriores: ExpedienteAntecedente[];
 }
 
 // POST /expedientes/{id}/validar
@@ -175,26 +153,4 @@ export interface SiguienteAccionResponse {
   _error?: string;
 }
 
-// POST /expedientes/{id}/siguiente-accion/aceptar
-export interface AceptarAccionResponse {
-  expediente_id: string;
-  accion_aceptada: string;
-  estado: ExpedienteEstado;
-}
 
-// Payload para POST /expedientes (creación manual)
-export interface CrearExpedientePayload {
-  cliente_ruc: string;
-  razon_social: string;
-  estado_ruc: EstadoRuc;
-  nota: {
-    numero_autorizacion: string;
-    ruc_beneficiario: string;
-    valor_nominal: number;
-    saldo_disponible: number;
-    tipo: TipoNotaCredito;
-    historial_endosos: Endoso[];
-  };
-  monto_a_negociar: number;
-  responsable: string;
-}

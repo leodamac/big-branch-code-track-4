@@ -1,52 +1,34 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import type { ExpedienteEstado, ExpedienteListItem, EstadoRuc, TipoNotaCredito } from '../types';
-import { apiClient, ApiError, formatMonto } from '../services/apiClient';
+import type { ExpedienteEstado, ExpedienteListItem } from '../types';
+import { apiClient, formatMonto } from '../services/apiClient';
 import {
-  FolderOpen, Plus, Search, Filter, ArrowUpRight,
-  Activity, CheckCircle, Clock, Ban, AlertOctagon, User, DollarSign, Calendar,
-  RefreshCw
+  FolderOpen, Search, ArrowUpRight,
+  Activity, CheckCircle, Clock, Ban, AlertOctagon, User, FileWarning, Calendar,
+  RefreshCw,
 } from 'lucide-react';
 
 const POLL_INTERVAL_MS = 7000;
 
 const statusConfig: Record<ExpedienteEstado, { label: string; bg: string; text: string; icon: React.ReactNode }> = {
-  RECIBIDO: { label: 'Recibido', bg: 'bg-blue-500/10 border-blue-500/30', text: 'text-blue-400', icon: <Clock className="w-3 h-3" /> },
-  EN_VALIDACION: { label: 'En Validación', bg: 'bg-amber-500/10 border-amber-500/30', text: 'text-amber-400', icon: <Activity className="w-3 h-3 animate-pulse" /> },
-  PENDIENTE_DOCUMENTACION: { label: 'Falta Docs', bg: 'bg-indigo-500/10 border-indigo-500/30', text: 'text-indigo-400', icon: <AlertOctagon className="w-3 h-3" /> },
-  LISTO_PARA_NEGOCIAR: { label: 'Listo Negociar', bg: 'bg-emerald-500/10 border-emerald-500/30', text: 'text-emerald-400', icon: <CheckCircle className="w-3 h-3" /> },
-  EN_NEGOCIACION: { label: 'En Bolsa', bg: 'bg-purple-500/10 border-purple-500/30', text: 'text-purple-400', icon: <ArrowUpRight className="w-3 h-3" /> },
-  CERRADO: { label: 'Cerrado', bg: 'bg-slate-500/10 border-slate-500/30', text: 'text-slate-400', icon: <CheckCircle className="w-3 h-3" /> },
-  RECHAZADO: { label: 'Rechazado', bg: 'bg-red-500/10 border-red-500/30', text: 'text-red-400', icon: <Ban className="w-3 h-3" /> },
-  CANCELADO: { label: 'Cancelado', bg: 'bg-slate-700/10 border-slate-700/30', text: 'text-slate-400', icon: <Ban className="w-3 h-3" /> },
-};
-
-const emptyForm = {
-  cliente_ruc: '',
-  razon_social: '',
-  estado_ruc: 'ACTIVO' as EstadoRuc,
-  numero_autorizacion: '',
-  tipo: 'NCD' as TipoNotaCredito,
-  valor_nominal: '',
-  saldo_disponible: '',
-  monto_a_negociar: '',
+  RECIBIDO: { label: 'Recibido', bg: 'bg-[#e7f3f8]', text: 'text-[#0b6e99]', icon: <Clock className="w-3 h-3" /> },
+  EN_VALIDACION: { label: 'En Validación', bg: 'bg-[#fbf3db]', text: 'text-[#9f6a00]', icon: <Activity className="w-3 h-3 animate-pulse" /> },
+  PENDIENTE_DOCUMENTACION: { label: 'Falta Docs', bg: 'bg-[#eae4f2]', text: 'text-[#6940a5]', icon: <AlertOctagon className="w-3 h-3" /> },
+  LISTO_PARA_NEGOCIAR: { label: 'Listo Negociar', bg: 'bg-[#ddedea]', text: 'text-[#0f7b6c]', icon: <CheckCircle className="w-3 h-3" /> },
+  EN_NEGOCIACION: { label: 'En Bolsa', bg: 'bg-[#f4dfeb]', text: 'text-[#ad1a72]', icon: <ArrowUpRight className="w-3 h-3" /> },
+  CERRADO: { label: 'Cerrado', bg: 'bg-ink-100', text: 'text-ink-600', icon: <CheckCircle className="w-3 h-3" /> },
+  RECHAZADO: { label: 'Rechazado', bg: 'bg-[#fbe4e4]', text: 'text-[#e03e3e]', icon: <Ban className="w-3 h-3" /> },
+  CANCELADO: { label: 'Cancelado', bg: 'bg-ink-100', text: 'text-ink-500', icon: <Ban className="w-3 h-3" /> },
 };
 
 export const ExpedientesList: React.FC = () => {
   const navigate = useNavigate();
-  const { isOperador, role } = useAuth();
 
   const [expedientes, setExpedientes] = useState<ExpedienteListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
-
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   const isFirstLoad = useRef(true);
 
@@ -71,55 +53,6 @@ export const ExpedientesList: React.FC = () => {
     return () => clearInterval(interval);
   }, [fetchExpedientes]);
 
-  const resetForm = () => {
-    setForm(emptyForm);
-    setSaveError(null);
-  };
-
-  const handleCreateCase = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaveError(null);
-
-    const valorNominal = parseFloat(form.valor_nominal);
-    const saldoDisponible = parseFloat(form.saldo_disponible);
-    const montoNegociar = parseFloat(form.monto_a_negociar);
-
-    if (montoNegociar > saldoDisponible) {
-      setSaveError('El monto a negociar no puede exceder el saldo disponible.');
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      await apiClient.expedientes.crear({
-        cliente_ruc: form.cliente_ruc,
-        razon_social: form.razon_social.toUpperCase(),
-        estado_ruc: form.estado_ruc,
-        nota: {
-          numero_autorizacion: form.numero_autorizacion,
-          ruc_beneficiario: form.cliente_ruc,
-          valor_nominal: valorNominal,
-          saldo_disponible: saldoDisponible,
-          tipo: form.tipo,
-          historial_endosos: [],
-        },
-        monto_a_negociar: montoNegociar,
-        responsable: role === 'OPERADOR' ? 'Operador de Valores' : 'Oficial de Cumplimiento',
-      });
-      setIsModalOpen(false);
-      resetForm();
-      fetchExpedientes();
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setSaveError(err.status === 409 ? err.message : `Error al crear expediente: ${err.message}`);
-      } else {
-        setSaveError('Error inesperado al crear el expediente.');
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const filteredExpedientes = expedientes.filter((exp) => {
     const term = searchTerm.toLowerCase();
     const matchesSearch =
@@ -134,172 +67,167 @@ export const ExpedientesList: React.FC = () => {
   const totalCases = expedientes.length;
   const inValidationCount = expedientes.filter((e) => e.estado === 'EN_VALIDACION').length;
   const readyCount = expedientes.filter((e) => e.estado === 'LISTO_PARA_NEGOCIAR').length;
-  const totalMontoNegociable = expedientes.reduce((sum, e) => sum + parseFloat(e.monto_a_negociar), 0);
+  const missingDocsCount = expedientes.filter((e) => e.estado === 'PENDIENTE_DOCUMENTACION').length;
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 animate-fade-in space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
-            Expedientes de Notas de Crédito
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">
-            Asistente inteligente para la validación y negociación de NCD en la Bolsa de Valores.
-          </p>
-        </div>
-
-        {isOperador && (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white rounded-xl text-sm font-semibold shadow-lg hover:shadow-brand-500/20 transition-all duration-200"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Crear Expediente (manual)</span>
-          </button>
-        )}
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink-900">
+          Expedientes de Notas de Crédito
+        </h1>
+        <p className="text-ink-500 text-sm mt-1">
+          Asistente inteligente para la validación y negociación de NCD extraídas del SRI.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800/80 flex items-center gap-4 glow-brand">
-          <div className="w-12 h-12 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-400">
-            <FolderOpen className="w-6 h-6" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <button
+          type="button"
+          onClick={() => setStatusFilter('ALL')}
+          className={`panel p-3.5 sm:p-4 rounded-lg flex items-center gap-3 sm:gap-3.5 min-w-0 text-left transition-shadow duration-150 hover:shadow-sm ${
+            statusFilter === 'ALL' ? 'ring-2 ring-brand-400' : ''
+          }`}
+        >
+          <div className="w-10 h-10 shrink-0 rounded-md bg-brand-50 flex items-center justify-center text-brand-600">
+            <FolderOpen className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-xs text-slate-500 font-semibold tracking-wider">EXPEDIENTES TOTALES</div>
-            <div className="text-2xl font-bold text-slate-100 mt-0.5">{totalCases}</div>
+          <div className="min-w-0">
+            <div className="text-[11px] sm:text-xs text-ink-500 font-medium tracking-wide truncate">EXPEDIENTES TOTALES</div>
+            <div className="text-xl sm:text-2xl font-semibold text-ink-900 mt-0.5">{totalCases}</div>
           </div>
-        </div>
+        </button>
 
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800/80 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-            <Activity className="w-6 h-6 animate-pulse" />
+        <button
+          type="button"
+          onClick={() => setStatusFilter(statusFilter === 'EN_VALIDACION' ? 'ALL' : 'EN_VALIDACION')}
+          className={`panel p-3.5 sm:p-4 rounded-lg flex items-center gap-3 sm:gap-3.5 min-w-0 text-left transition-shadow duration-150 hover:shadow-sm ${
+            statusFilter === 'EN_VALIDACION' ? 'ring-2 ring-[#9f6a00]' : ''
+          }`}
+        >
+          <div className="w-10 h-10 shrink-0 rounded-md bg-[#fbf3db] flex items-center justify-center text-[#9f6a00]">
+            <Activity className="w-5 h-5 animate-pulse" />
           </div>
-          <div>
-            <div className="text-xs text-slate-500 font-semibold tracking-wider">EN VALIDACIÓN</div>
-            <div className="text-2xl font-bold text-slate-100 mt-0.5">{inValidationCount}</div>
+          <div className="min-w-0">
+            <div className="text-[11px] sm:text-xs text-ink-500 font-medium tracking-wide truncate">EN VALIDACIÓN</div>
+            <div className="text-xl sm:text-2xl font-semibold text-ink-900 mt-0.5">{inValidationCount}</div>
           </div>
-        </div>
+        </button>
 
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800/80 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-            <CheckCircle className="w-6 h-6" />
+        <button
+          type="button"
+          onClick={() => setStatusFilter(statusFilter === 'LISTO_PARA_NEGOCIAR' ? 'ALL' : 'LISTO_PARA_NEGOCIAR')}
+          className={`panel p-3.5 sm:p-4 rounded-lg flex items-center gap-3 sm:gap-3.5 min-w-0 text-left transition-shadow duration-150 hover:shadow-sm ${
+            statusFilter === 'LISTO_PARA_NEGOCIAR' ? 'ring-2 ring-[#0f7b6c]' : ''
+          }`}
+        >
+          <div className="w-10 h-10 shrink-0 rounded-md bg-[#ddedea] flex items-center justify-center text-[#0f7b6c]">
+            <CheckCircle className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-xs text-slate-500 font-semibold tracking-wider">LISTOS NEGOCIAR</div>
-            <div className="text-2xl font-bold text-slate-100 mt-0.5">{readyCount}</div>
+          <div className="min-w-0">
+            <div className="text-[11px] sm:text-xs text-ink-500 font-medium tracking-wide truncate">LISTOS NEGOCIAR</div>
+            <div className="text-xl sm:text-2xl font-semibold text-ink-900 mt-0.5">{readyCount}</div>
           </div>
-        </div>
+        </button>
 
-        <div className="glass-panel p-5 rounded-2xl border border-slate-800/80 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-400">
-            <DollarSign className="w-6 h-6" />
+        <button
+          type="button"
+          onClick={() => setStatusFilter(statusFilter === 'PENDIENTE_DOCUMENTACION' ? 'ALL' : 'PENDIENTE_DOCUMENTACION')}
+          className={`panel p-3.5 sm:p-4 rounded-lg flex items-center gap-3 sm:gap-3.5 min-w-0 text-left transition-shadow duration-150 hover:shadow-sm ${
+            statusFilter === 'PENDIENTE_DOCUMENTACION' ? 'ring-2 ring-[#6940a5]' : ''
+          }`}
+        >
+          <div className="w-10 h-10 shrink-0 rounded-md bg-[#eae4f2] flex items-center justify-center text-[#6940a5]">
+            <FileWarning className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-xs text-slate-500 font-semibold tracking-wider">VALOR A NEGOCIAR</div>
-            <div className="text-2xl font-bold text-slate-100 mt-0.5">${formatMonto(totalMontoNegociable)}</div>
+          <div className="min-w-0">
+            <div className="text-[11px] sm:text-xs text-ink-500 font-medium tracking-wide truncate">FALTA DOCS</div>
+            <div className="text-xl sm:text-2xl font-semibold text-ink-900 mt-0.5">{missingDocsCount}</div>
           </div>
-        </div>
+        </button>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-slate-900/40 p-4 rounded-2xl border border-slate-800/80">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+      <div className="bg-ink-50 p-3.5 rounded-lg border border-ink-200">
+        <div className="relative w-full">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-500" />
           <input
             type="text"
             placeholder="Buscar por RUC, Razón Social, ID..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-950/80 border border-slate-800 hover:border-slate-700/80 focus:border-brand-500/60 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none transition-colors duration-150"
+            className="w-full pl-10 pr-4 py-2 bg-white border border-ink-200 hover:border-ink-300 focus:border-brand-400 rounded-md text-sm text-ink-800 placeholder-ink-400 focus:outline-none transition-colors duration-150"
           />
-        </div>
-
-        <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-          <Filter className="w-3.5 h-3.5 text-slate-500 mr-1 hidden md:block" />
-          {['ALL', 'RECIBIDO', 'EN_VALIDACION', 'PENDIENTE_DOCUMENTACION', 'LISTO_PARA_NEGOCIAR'].map((status) => (
-            <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
-                statusFilter === status
-                  ? 'bg-brand-500/10 text-brand-400 border border-brand-500/30 shadow-md shadow-brand-500/5'
-                  : 'bg-transparent text-slate-400 border border-transparent hover:text-slate-200 hover:bg-slate-850'
-              }`}
-            >
-              {status === 'ALL' ? 'Todos' : statusConfig[status as ExpedienteEstado]?.label || status}
-            </button>
-          ))}
         </div>
       </div>
 
-      <div className="glass-panel rounded-2xl border border-slate-800/80 overflow-hidden">
+      <div className="panel rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left">
             <thead>
-              <tr className="border-b border-slate-800/80 bg-slate-900/20 text-slate-400 font-semibold text-xs tracking-wider uppercase">
-                <th className="py-4 px-6">ID / Creación</th>
-                <th className="py-4 px-6">Cliente (RUC)</th>
-                <th className="py-4 px-6">Nota Autorización</th>
-                <th className="py-4 px-6 text-right">Monto / Nominal</th>
-                <th className="py-4 px-6 text-center">Estado</th>
-                <th className="py-4 px-6">Responsable</th>
-                <th className="py-4 px-6 text-center">Acción</th>
+              <tr className="border-b border-ink-200 bg-ink-50 text-ink-500 font-semibold text-xs tracking-wide uppercase">
+                <th className="py-3 px-6">ID / Creación</th>
+                <th className="py-3 px-6">Cliente (RUC)</th>
+                <th className="py-3 px-6">Nota Autorización</th>
+                <th className="py-3 px-6 text-right">Monto a Negociar</th>
+                <th className="py-3 px-6 text-center">Estado</th>
+                <th className="py-3 px-6">Responsable</th>
+                <th className="py-3 px-6 text-center">Acción</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 text-slate-300 text-sm">
+            <tbody className="divide-y divide-ink-200 text-ink-700 text-sm">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500">
-                    <RefreshCw className="w-8 h-8 text-brand-500 animate-spin mx-auto mb-3" />
+                  <td colSpan={7} className="py-12 text-center text-ink-500">
+                    <RefreshCw className="w-6 h-6 text-brand-500 animate-spin mx-auto mb-3" />
                     <p className="font-medium">Cargando expedientes desde la API...</p>
                   </td>
                 </tr>
               ) : errorMsg ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-red-500 bg-red-950/5">
-                    <AlertOctagon className="w-8 h-8 text-red-500 mx-auto mb-3" />
-                    <p className="font-semibold text-red-400">{errorMsg}</p>
-                    <p className="text-xs text-slate-500 mt-1">Verifica que el backend esté corriendo en {import.meta.env.VITE_API_URL || 'http://localhost:8000'}</p>
+                  <td colSpan={7} className="py-12 text-center bg-[#fbe4e4]/20">
+                    <AlertOctagon className="w-6 h-6 text-[#e03e3e] mx-auto mb-3" />
+                    <p className="font-semibold text-[#e03e3e]">{errorMsg}</p>
+                    <p className="text-xs text-ink-500 mt-1">Verifica que el backend esté corriendo en {import.meta.env.VITE_API_URL || 'http://localhost:8000'}</p>
                   </td>
                 </tr>
               ) : filteredExpedientes.length > 0 ? (
                 filteredExpedientes.map((exp) => {
-                  const status = statusConfig[exp.estado] || { label: exp.estado, bg: 'bg-slate-800', text: 'text-slate-400', icon: null };
+                  const status = statusConfig[exp.estado] || { label: exp.estado, bg: 'bg-ink-100', text: 'text-ink-600', icon: null };
                   return (
-                    <tr key={exp.id} className="hover:bg-slate-800/10 transition-colors duration-100 group">
+                    <tr key={exp.id} className="hover:bg-ink-50 transition-colors duration-100 group">
                       <td className="py-4 px-6">
-                        <div className="font-semibold text-slate-200 group-hover:text-brand-400 transition-colors duration-150 font-mono text-xs" title={exp.id}>
+                        <div className="font-semibold text-ink-800 group-hover:text-brand-600 transition-colors duration-150 font-mono text-xs" title={exp.id}>
                           {exp.id.slice(0, 8)}…
                         </div>
-                        <div className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                        <div className="text-xs text-ink-500 flex items-center gap-1 mt-1">
                           <Calendar className="w-3 h-3" />
                           <span>{new Date(exp.created_at).toLocaleDateString('es-EC')}</span>
                         </div>
                       </td>
                       <td className="py-4 px-6">
-                        <div className="font-medium text-slate-200 truncate max-w-[200px]">{exp.cliente.razon_social}</div>
-                        <div className="text-xs font-mono text-slate-400 mt-0.5">{exp.cliente.ruc}</div>
+                        <div className="font-medium text-ink-800 truncate max-w-[200px]">{exp.cliente.razon_social}</div>
+                        <div className="text-xs font-mono text-ink-500 mt-0.5">{exp.cliente.ruc}</div>
                       </td>
                       <td className="py-4 px-6">
-                        <div className="font-mono text-xs text-slate-400 truncate max-w-[150px]" title={exp.nota_credito.numero_autorizacion}>
+                        <div className="font-mono text-xs text-ink-500 truncate max-w-[150px]" title={exp.nota_credito.numero_autorizacion}>
                           {exp.nota_credito.numero_autorizacion}
                         </div>
-                        <div className="text-[10px] px-1.5 py-0.5 bg-slate-900 border border-slate-800 text-slate-500 rounded font-medium mt-1 w-max">
+                        <div className="text-[10px] px-1.5 py-0.5 bg-ink-100 text-ink-600 rounded font-medium mt-1 w-max">
                           {exp.nota_credito.tipo}
                         </div>
                       </td>
                       <td className="py-4 px-6 text-right">
-                        <div className="font-bold text-slate-200">${formatMonto(exp.monto_a_negociar)}</div>
-                        <div className="text-xs text-slate-500 mt-0.5">Nominal: ${formatMonto(exp.nota_credito.valor_nominal)}</div>
+                        <div className="font-semibold text-ink-800">${formatMonto(exp.monto_a_negociar)}</div>
+                        <div className="text-xs text-ink-500 mt-0.5">Nominal: ${formatMonto(exp.nota_credito.valor_nominal)}</div>
                       </td>
                       <td className="py-4 px-6 text-center">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${status.bg} ${status.text}`}>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${status.bg} ${status.text}`}>
                           {status.icon}
                           <span>{status.label}</span>
                         </span>
                       </td>
                       <td className="py-4 px-6">
-                        <div className="flex items-center gap-2 text-slate-300">
-                          <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-400 border border-slate-700">
+                        <div className="flex items-center gap-2 text-ink-700">
+                          <div className="w-6 h-6 rounded-full bg-ink-100 flex items-center justify-center text-xs text-ink-500">
                             <User className="w-3.5 h-3.5" />
                           </div>
                           <span className="font-medium">{exp.responsable}</span>
@@ -308,7 +236,7 @@ export const ExpedientesList: React.FC = () => {
                       <td className="py-4 px-6 text-center">
                         <button
                           onClick={() => navigate(`/expedientes/${exp.id}`)}
-                          className="px-3 py-1.5 bg-slate-900 hover:bg-brand-600 hover:text-white border border-slate-800 hover:border-brand-500 text-slate-300 rounded-lg text-xs font-semibold transition-all duration-150 flex items-center gap-1.5 mx-auto"
+                          className="px-3 py-1.5 bg-white hover:bg-brand-600 hover:text-white border border-ink-200 hover:border-brand-600 text-ink-700 rounded-md text-xs font-semibold transition-colors duration-150 flex items-center gap-1.5 mx-auto"
                         >
                           <span>Ver Detalle</span>
                           <ArrowUpRight className="w-3.5 h-3.5" />
@@ -319,11 +247,11 @@ export const ExpedientesList: React.FC = () => {
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500">
-                    <FolderOpen className="w-12 h-12 text-slate-650 mx-auto mb-3" />
+                  <td colSpan={7} className="py-12 text-center text-ink-500">
+                    <FolderOpen className="w-10 h-10 text-ink-300 mx-auto mb-3" />
                     <p className="font-medium">No se encontraron expedientes</p>
-                    <p className="text-xs text-slate-600 mt-1">
-                      El pipeline los va creando solo desde el SRI cada pocos segundos — o crea uno manual arriba.
+                    <p className="text-xs text-ink-400 mt-1">
+                      El pipeline los va creando solo desde el SRI cada pocos segundos.
                     </p>
                   </td>
                 </tr>
@@ -332,96 +260,6 @@ export const ExpedientesList: React.FC = () => {
           </table>
         </div>
       </div>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg glass-panel rounded-2xl border border-slate-800 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-4 bg-slate-900/40 border-b border-slate-800/80 flex items-center justify-between sticky top-0">
-              <h3 className="font-bold text-slate-200 text-lg">Crear Expediente Manual</h3>
-              <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="text-slate-400 hover:text-slate-200 text-sm">✕</button>
-            </div>
-
-            <form onSubmit={handleCreateCase} className="p-6 space-y-4">
-              {saveError && (
-                <div className="p-3 rounded-xl bg-red-950/20 border border-red-500/30 text-red-400 text-xs">{saveError}</div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-400 uppercase">RUC Cliente</label>
-                  <input type="text" maxLength={13} required placeholder="1790012345001" value={form.cliente_ruc}
-                    onChange={(e) => setForm((f) => ({ ...f, cliente_ruc: e.target.value.replace(/\D/g, '') }))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 focus:border-brand-500/60 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition-colors" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-400 uppercase">Estado RUC</label>
-                  <select value={form.estado_ruc} onChange={(e) => setForm((f) => ({ ...f, estado_ruc: e.target.value as EstadoRuc }))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 focus:border-brand-500/60 rounded-xl text-sm text-slate-200 focus:outline-none transition-colors">
-                    <option value="ACTIVO">ACTIVO</option>
-                    <option value="SUSPENDIDO">SUSPENDIDO</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-400 uppercase">Razón Social</label>
-                <input type="text" required placeholder="EMPRESA DE PRUEBA S.A." value={form.razon_social}
-                  onChange={(e) => setForm((f) => ({ ...f, razon_social: e.target.value }))}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-850 focus:border-brand-500/60 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition-colors" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-400 uppercase">Número Autorización</label>
-                  <input type="text" maxLength={37} required placeholder="37 dígitos" value={form.numero_autorizacion}
-                    onChange={(e) => setForm((f) => ({ ...f, numero_autorizacion: e.target.value.replace(/\D/g, '') }))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 focus:border-brand-500/60 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition-colors" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-400 uppercase">Tipo Nota</label>
-                  <select value={form.tipo} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as TipoNotaCredito }))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 focus:border-brand-500/60 rounded-xl text-sm text-slate-200 focus:outline-none transition-colors">
-                    <option value="NCD">NCD</option>
-                    <option value="NCD_ISD">NCD_ISD</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-400 uppercase">Valor Nominal ($)</label>
-                  <input type="number" step="0.01" min="0.01" required placeholder="0.00" value={form.valor_nominal}
-                    onChange={(e) => setForm((f) => ({ ...f, valor_nominal: e.target.value }))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 focus:border-brand-500/60 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition-colors" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-400 uppercase">Saldo Disp. ($)</label>
-                  <input type="number" step="0.01" min="0.01" required placeholder="0.00" value={form.saldo_disponible}
-                    onChange={(e) => setForm((f) => ({ ...f, saldo_disponible: e.target.value }))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 focus:border-brand-500/60 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition-colors" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-400 uppercase">Monto Negociar ($)</label>
-                  <input type="number" step="0.01" min="0.01" required placeholder="0.00" value={form.monto_a_negociar}
-                    onChange={(e) => setForm((f) => ({ ...f, monto_a_negociar: e.target.value }))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-850 focus:border-brand-500/60 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition-colors" />
-                </div>
-              </div>
-
-              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-850/60">
-                <button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }}
-                  className="px-4 py-2 border border-slate-800 hover:border-slate-700 text-slate-450 hover:text-slate-200 rounded-xl text-sm font-semibold transition-all">
-                  Cancelar
-                </button>
-                <button type="submit" disabled={isSaving}
-                  className="px-4 py-2 bg-brand-600 hover:bg-brand-500 active:bg-brand-700 disabled:opacity-50 text-white rounded-xl text-sm font-semibold shadow-lg hover:shadow-brand-500/10 transition-all">
-                  {isSaving ? 'Guardando...' : 'Guardar Expediente'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
